@@ -1,0 +1,49 @@
+station,parameter,issue_type,row_count,details
+cheboksary_hub,discharge,invalid_value,6,Строки удалены
+cheboksary_hub,discharge,suspicious_jump,72,Порог скачка 1520.00; строки не удалялись
+cheboksary_hub,level_lower,invalid_value,15,Строки удалены
+cheboksary_hub,level_lower,suspicious_jump,5,Порог скачка 1.50; строки не удалялись
+cheboksary_hub,level_upper,invalid_value,3,Строки удалены
+gorky_hub,discharge,invalid_value,2,Строки удалены
+gorky_hub,discharge,suspicious_jump,10,Порог скачка 1500.00; строки не удалялись
+gorky_hub,level_lower,invalid_value,13,Строки удалены
+gorky_hub,level_lower,suspicious_jump,5,Порог скачка 1.50; строки не удалялись
+kamsky_hub,discharge,invalid_value,2,Строки удалены
+kamsky_hub,discharge,suspicious_jump,24,Порог скачка 1500.00; строки не удалялись
+kamsky_hub,level_lower,invalid_value,12,Строки удалены
+kamsky_hub,level_lower,suspicious_jump,2,Порог скачка 1.50; строки не удалялись
+kamsky_hub,level_upper,invalid_value,1,Строки удалены
+kamsky_hub,level_upper,suspicious_jump,2,Порог скачка 1.50; строки не удалялись
+kuibyshev_hub,discharge,invalid_value,3,Строки удалены
+kuibyshev_hub,discharge,suspicious_jump,179,Порог скачка 1922.40; строки не удалялись
+kuibyshev_hub,level_lower,invalid_value,12,Строки удалены
+kuibyshev_hub,level_lower,suspicious_jump,12,Порог скачка 1.50; строки не удалялись
+kuibyshev_hub,level_upper,suspicious_jump,2,Порог скачка 1.50; строки не удалялись
+nizhnekamsky_hub,discharge,invalid_value,4,Строки удалены
+nizhnekamsky_hub,discharge,suspicious_jump,282,Порог скачка 1688.00; строки не удалялись
+nizhnekamsky_hub,level_lower,invalid_value,12,Строки удалены
+nizhnekamsky_hub,level_lower,suspicious_jump,5,Порог скачка 1.50; строки не удалялись
+rybinsk_hub,discharge,invalid_value,2,Строки удалены
+rybinsk_hub,discharge,suspicious_jump,39,Порог скачка 1500.00; строки не удалялись
+rybinsk_hub,level_lower,invalid_value,24,Строки удалены
+rybinsk_hub,level_lower,suspicious_jump,17,Порог скачка 1.50; строки не удалялись
+rybinsk_hub,level_upper,invalid_value,59,Строки удалены
+rybinsk_hub,level_upper,suspicious_jump,1,Порог скачка 1.50; строки не удалялись
+saratov_hub,discharge,invalid_value,1,Строки удалены
+saratov_hub,discharge,suspicious_jump,142,Порог скачка 2888.00; строки не удалялись
+saratov_hub,level_lower,invalid_value,1,Строки удалены
+saratov_hub,level_lower,suspicious_jump,19,Порог скачка 1.50; строки не удалялись
+uglich_hub,discharge,invalid_value,2,Строки удалены
+uglich_hub,discharge,suspicious_jump,4,Порог скачка 1500.00; строки не удалялись
+uglich_hub,level_lower,invalid_value,5,Строки удалены
+uglich_hub,level_lower,suspicious_jump,1,Порог скачка 1.50; строки не удалялись
+uglich_hub,level_upper,suspicious_jump,2,Порог скачка 1.50; строки не удалялись
+volgograd_hub,discharge,invalid_value,1,Строки удалены
+volgograd_hub,discharge,suspicious_jump,214,Порог скачка 1500.00; строки не удалялись
+volgograd_hub,level_lower,invalid_value,1,Строки удалены
+volgograd_hub,level_lower,suspicious_jump,7,Порог скачка 1.50; строки не удалялись
+votkinsky_hub,discharge,invalid_value,2,Строки удалены
+votkinsky_hub,discharge,suspicious_jump,25,Порог скачка 1500.00; строки не удалялись
+votkinsky_hub,level_lower,invalid_value,13,Строки удалены
+votkinsky_hub,level_lower,suspicious_jump,9,Порог скачка 1.50; строки не удалялись
+votkinsky_hub,level_upper,suspicious_jump,4,Порог скачка 1.50; строки не удалялись

@@ -1,0 +1,20 @@
+{
+"type": "FeatureCollection",
+"name": "network_nodes",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "id": "station_0", "type": "station", "name": "Угличский гидроузел", "river": "Волга", "db_station": "uglich_hub", "object_type": "hub", "river_section": "upper_volga", "sort_order": 1.0 }, "geometry": { "type": "Point", "coordinates": [ 38.298, 57.526 ] } },
+{ "type": "Feature", "properties": { "id": "station_1", "type": "station", "name": "Рыбинский гидроузел", "river": "Волга", "db_station": "rybinsk_hub", "object_type": "hub", "river_section": "upper_volga", "sort_order": 2.0 }, "geometry": { "type": "Point", "coordinates": [ 38.825, 58.082 ] } },
+{ "type": "Feature", "properties": { "id": "station_2", "type": "station", "name": "Горьковский гидроузел", "river": "Волга", "db_station": "gorky_hub", "object_type": "hub", "river_section": "middle_volga", "sort_order": 3.0 }, "geometry": { "type": "Point", "coordinates": [ 43.374, 56.654 ] } },
+{ "type": "Feature", "properties": { "id": "station_3", "type": "station", "name": "Чебоксарский гидроузел", "river": "Волга", "db_station": "cheboksary_hub", "object_type": "hub", "river_section": "middle_volga", "sort_order": 4.0 }, "geometry": { "type": "Point", "coordinates": [ 47.465, 56.14 ] } },
+{ "type": "Feature", "properties": { "id": "station_4", "type": "station", "name": "Куйбышевский гидроузел", "river": "Волга", "db_station": "kuibyshev_hub", "object_type": "hub", "river_section": "middle_volga", "sort_order": 5.0 }, "geometry": { "type": "Point", "coordinates": [ 49.491, 53.452 ] } },
+{ "type": "Feature", "properties": { "id": "station_5", "type": "station", "name": "Саратовский гидроузел", "river": "Волга", "db_station": "saratov_hub", "object_type": "hub", "river_section": "saratov_volgograd", "sort_order": 1.0 }, "geometry": { "type": "Point", "coordinates": [ 47.76, 52.049 ] } },
+{ "type": "Feature", "properties": { "id": "station_6", "type": "station", "name": "Вольск", "river": "Волга", "db_station": "volsk_post", "object_type": "post", "river_section": "saratov_volgograd", "sort_order": 2.0 }, "geometry": { "type": "Point", "coordinates": [ 47.398734662812423, 52.028741695561855 ] } },
+{ "type": "Feature", "properties": { "id": "station_7", "type": "station", "name": "Маркс", "river": "Волга", "db_station": "marks_post", "object_type": "post", "river_section": "saratov_volgograd", "sort_order": 3.0 }, "geometry": { "type": "Point", "coordinates": [ 46.735648820314942, 51.729674988984726 ] } },
+{ "type": "Feature", "properties": { "id": "station_8", "type": "station", "name": "Волгоградский гидроузел", "river": "Волга", "db_station": "volgograd_hub", "object_type": "hub", "river_section": "saratov_volgograd", "sort_order": 4.0 }, "geometry": { "type": "Point", "coordinates": [ 44.671, 48.826 ] } },
+{ "type": "Feature", "properties": { "id": "station_9", "type": "station", "name": "Камский гидроузел", "river": "Кама", "db_station": "kamsky_hub", "object_type": "hub", "river_section": "kama", "sort_order": 1.0 }, "geometry": { "type": "Point", "coordinates": [ 56.327609, 58.114394 ] } },
+{ "type": "Feature", "properties": { "id": "station_10", "type": "station", "name": "Воткинский гидроузел", "river": "Кама", "db_station": "votkinsky_hub", "object_type": "hub", "river_section": "kama", "sort_order": 2.0 }, "geometry": { "type": "Point", "coordinates": [ 54.09117, 56.790383 ] } },
+{ "type": "Feature", "properties": { "id": "station_11", "type": "station", "name": "Нижнекамский гидроузел", "river": "Кама", "db_station": "nizhnekamsky_hub", "object_type": "hub", "river_section": "kama", "sort_order": 3.0 }, "geometry": { "type": "Point", "coordinates": [ 52.278564, 55.700513 ] } },
+{ "type": "Feature", "properties": { "id": "confluence_1", "type": "confluence", "name": "Слияние Камы и Волги", "river": "Волга/Кама", "db_station": null, "object_type": null, "river_section": null, "sort_order": null }, "geometry": { "type": "Point", "coordinates": [ 49.3594759, 55.1930409 ] } }
+]
+}
