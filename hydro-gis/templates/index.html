@@ -17,18 +17,50 @@
     aside button { background:var(--accent); color:white; border:0; cursor:pointer; }
     .station { padding:9px; border-radius:8px; cursor:pointer; }
     .station:hover,.station.active { background:#eaf2f9; }
-    .thumb-grid { display:grid; gap:8px; }
-    .thumb-card { position:relative; border:1px solid #d9e3ed; border-radius:8px;
-      overflow:hidden; background:#fff; }
-    .thumb-card img { width:100%; display:block; cursor:pointer; background:white; }
-    .thumb-card.expanded { grid-column:1/-1; }
-    .thumb-card.expanded img { max-height:360px; object-fit:contain; }
-    .thumb-title { padding:6px 8px; font-size:12px; font-weight:600; }
-    .thumb-actions { display:flex; gap:6px; padding:0 8px 8px; }
-    .thumb-actions a { flex:1; text-align:center; text-decoration:none; font-size:12px;
-      color:#1769aa; background:#edf4fa; border-radius:6px; padding:5px; }
-    #mapFrame { width:100%; height:46%; border:0; background:white; }
-    #chartFrame { width:100%; height:54%; border:0; background:white; }
+    section { position:relative; min-width:0; }
+    #mapFrame { width:100%; height:100%; border:0; background:white; display:block; }
+    #graphDrawer {
+      position:absolute; z-index:20; right:12px; top:12px; bottom:12px;
+      width:58px; box-sizing:border-box; overflow:hidden;
+      background:rgba(255,255,255,.96); border:1px solid #ccd8e5;
+      border-radius:12px; box-shadow:0 8px 24px rgba(31,55,82,.18);
+      transition:width .18s ease;
+    }
+    #graphDrawer.open { width:230px; }
+    #drawerToggle {
+      width:100%; height:46px; border:0; border-bottom:1px solid #dde6ef;
+      background:white; color:#18324a; font-size:20px; cursor:pointer;
+    }
+    #drawerContent { display:none; height:calc(100% - 46px); overflow-y:auto; padding:8px; }
+    #graphDrawer.open #drawerContent { display:block; }
+    .graph-icon {
+      width:42px; height:42px; border:1px solid #d3dfeb; border-radius:9px;
+      background:#eef4fa; color:#1769aa; cursor:pointer; font-size:20px;
+      float:left; margin:0 8px 8px 0;
+    }
+    #graphDrawer.open .graph-icon { float:none; width:100%; height:auto; min-height:44px;
+      display:flex; align-items:center; gap:8px; padding:6px 10px; margin:0 0 8px;
+      text-align:left; font-size:14px;
+    }
+    .graph-icon span { display:none; }
+    #graphDrawer.open .graph-icon span { display:inline; }
+    #chartOverlay {
+      position:absolute; z-index:30; display:none; top:24px; left:24px;
+      right:266px; bottom:24px; background:white; border:1px solid #bfcddd;
+      border-radius:14px; box-shadow:0 16px 40px rgba(18,43,69,.28); overflow:hidden;
+    }
+    #chartOverlay.open { display:flex; flex-direction:column; }
+    .overlay-bar { height:48px; min-height:48px; display:flex; align-items:center;
+      justify-content:space-between; padding:0 10px 0 16px; background:#f5f8fb;
+      border-bottom:1px solid #dde6ef; }
+    .overlay-bar strong { color:#18324a; }
+    .overlay-actions { display:flex; gap:8px; }
+    .overlay-actions a,.overlay-actions button {
+      height:32px; box-sizing:border-box; border:1px solid #c5d3e2; border-radius:7px;
+      background:white; color:#1769aa; text-decoration:none; padding:7px 10px;
+      cursor:pointer; font-size:13px;
+    }
+    #chartOverlayFrame { flex:1; width:100%; border:0; background:white; }
   </style>
 </head>
 <body>
@@ -55,9 +87,7 @@
       </select>
       <label>С даты</label><input id="dateFrom" type="date" value="2010-01-01">
       <label>По дату</label><input id="dateTo" type="date">
-      <button id="showChart">Построить график</button>
-      <h3>Мини-графики</h3>
-      <div id="thumbGrid" class="thumb-grid"></div>
+      <button id="showChart">Выбрать график</button>
       <h3>Объекты</h3>
       <div id="stations">
         {% for s in stations %}
@@ -70,17 +100,30 @@
     </aside>
     <section>
       <iframe id="mapFrame" src="/map"></iframe>
-      <iframe id="chartFrame" src="about:blank"></iframe>
+      <div id="graphDrawer" aria-label="Меню графиков">
+        <button id="drawerToggle" title="Открыть меню графиков">▣</button>
+        <div id="drawerContent"></div>
+      </div>
+      <div id="chartOverlay" role="dialog" aria-modal="false">
+        <div class="overlay-bar">
+          <strong id="chartTitle">График</strong>
+          <div class="overlay-actions">
+            <a id="chartDownload" href="#" download>Скачать PNG</a>
+            <button id="chartClose" type="button">Закрыть</button>
+          </div>
+        </div>
+        <iframe id="chartOverlayFrame" src="about:blank"></iframe>
+      </div>
     </section>
   </main>
   <script>
     let selected = null;
     const stations = document.querySelectorAll(".station");
     const thumbParameters = [
-      ["discharge", "Расход воды"],
-      ["level_upper", "Верхний бьеф"],
-      ["level_lower", "Нижний бьеф"],
-      ["level", "Уровень"]
+      ["discharge", "Расход воды", "Q"],
+      ["level_upper", "Верхний бьеф", "ВБ"],
+      ["level_lower", "Нижний бьеф", "НБ"],
+      ["level", "Уровень", "У"]
     ];
     function chartParams(parameter) {
       return new URLSearchParams({
@@ -90,39 +133,44 @@
         to: document.getElementById("dateTo").value
       });
     }
-    function updateThumbnails() {
-      const grid = document.getElementById("thumbGrid");
-      grid.innerHTML = "";
+    function updateGraphMenu() {
+      const content = document.getElementById("drawerContent");
+      content.innerHTML = "";
       if (!selected) return;
       thumbParameters.forEach(function(item) {
         const params = chartParams(item[0]);
         const url = "/plot?" + params.toString();
-        const card = document.createElement("div");
-        card.className = "thumb-card";
-        card.innerHTML =
-          '<div class="thumb-title">' + item[1] + '</div>' +
-          '<img alt="' + item[1] + '" src="' + url + '">' +
-          '<div class="thumb-actions">' +
-          '<a class="expand" href="#">Развернуть</a>' +
-          '<a href="' + url + '&download=1">Скачать PNG</a>' +
-          '</div>';
-        card.querySelector("img").addEventListener("click", function() {
-          card.querySelector(".expand").click();
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "graph-icon";
+        button.title = item[1];
+        button.innerHTML = '<b>' + item[2] + '</b><span>' + item[1] + '</span>';
+        button.addEventListener("click", function() {
+          openChart(item[1], url);
         });
-        card.querySelector(".expand").addEventListener("click", function(event) {
-          event.preventDefault();
-          const wasExpanded = card.classList.contains("expanded");
-          document.querySelectorAll(".thumb-card").forEach(c => c.classList.remove("expanded"));
-          if (!wasExpanded) {
-            card.classList.add("expanded");
-            document.getElementById("chartFrame").src = url;
-          } else {
-            document.getElementById("chartFrame").src = "about:blank";
-          }
-        });
-        grid.appendChild(card);
+        content.appendChild(button);
       });
     }
+    function openChart(title, url) {
+      document.getElementById("chartTitle").textContent = title;
+      document.getElementById("chartOverlayFrame").src = url;
+      document.getElementById("chartDownload").href = url + "&download=1";
+      document.getElementById("chartOverlay").classList.add("open");
+    }
+    document.getElementById("drawerToggle").addEventListener("click", function() {
+      if (!selected) {
+        alert("Выберите объект из списка");
+        return;
+      }
+      document.getElementById("graphDrawer").classList.toggle("open");
+    });
+    document.getElementById("chartClose").addEventListener("click", function() {
+      document.getElementById("chartOverlay").classList.remove("open");
+      document.getElementById("chartOverlayFrame").src = "about:blank";
+    });
+    document.addEventListener("keydown", function(event) {
+      if (event.key === "Escape") document.getElementById("chartClose").click();
+    });
     function updateMap() {
       const overview = document.getElementById("overview").value;
       document.getElementById("mapFrame").src =
@@ -135,7 +183,8 @@
         el.classList.add("active");
         selected = el.dataset.id;
         updateMap();
-        updateThumbnails();
+        updateGraphMenu();
+        document.getElementById("graphDrawer").classList.add("open");
       });
     });
     document.getElementById("overview").addEventListener("change", updateMap);
@@ -146,12 +195,14 @@
     });
     document.getElementById("showChart").addEventListener("click", function() {
       if (!selected) { alert("Выберите объект из списка"); return; }
-      const params = chartParams(document.getElementById("parameter").value);
-      document.getElementById("chartFrame").src = "/plot?" + params.toString();
-      updateThumbnails();
+      const parameterSelect = document.getElementById("parameter");
+      const parameter = parameterSelect.value;
+      const label = parameterSelect.options[parameterSelect.selectedIndex].text;
+      openChart(label, "/plot?" + chartParams(parameter).toString());
+      updateGraphMenu();
     });
-    document.getElementById("dateFrom").addEventListener("change", updateThumbnails);
-    document.getElementById("dateTo").addEventListener("change", updateThumbnails);
+    document.getElementById("dateFrom").addEventListener("change", updateGraphMenu);
+    document.getElementById("dateTo").addEventListener("change", updateGraphMenu);
   </script>
 </body>
 </html>
