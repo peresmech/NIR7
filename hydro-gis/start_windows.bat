@@ -24,8 +24,9 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 echo Установка зависимостей...
-".venv\Scripts\python.exe" -m pip install --upgrade pip
-".venv\Scripts\python.exe" -m pip install -r requirements.txt
+".venv\Scripts\python.exe" -m pip cache purge >nul 2>nul
+".venv\Scripts\python.exe" -m pip install --upgrade pip --no-cache-dir
+".venv\Scripts\python.exe" -m pip install --no-cache-dir -r requirements.txt
 if errorlevel 1 (
     echo Не удалось установить зависимости. Проверьте подключение к Интернету.
     pause
