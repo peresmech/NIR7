@@ -39,6 +39,23 @@
     </form>
     <p>CSV должен содержать столбец <code>Dates</code> или <code>date</code> и значение:
       <code>Discharge</code>, <code>Absolute_Levels</code> или <code>value</code>.</p>
+    <h3>Добавить объект вручную</h3>
+    <form method="post" action="/admin/station">
+      <input name="station_id" placeholder="Код объекта" required>
+      <input name="display_name" placeholder="Название" required>
+      <input name="river" placeholder="Река">
+      <input name="lat" type="number" step="0.000001" placeholder="Широта" required>
+      <input name="lon" type="number" step="0.000001" placeholder="Долгота" required>
+      <select name="object_type">
+        <option value="hub">Гидроузел</option>
+        <option value="post">Гидропост</option>
+      </select>
+      <input name="river_section" placeholder="Участок реки">
+      <input name="source_name" placeholder="Источник данных / исток">
+      <input name="source_type" placeholder="Тип источника">
+      <input name="source_note" placeholder="ТП или примечание">
+      <button type="submit">Сохранить объект</button>
+    </form>
     <h3>Смена пароля администратора</h3>
     <form method="post" action="/admin/password">
       <input type="password" name="password" minlength="8" placeholder="Новый пароль" required>

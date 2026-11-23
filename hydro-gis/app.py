@@ -28,6 +28,8 @@ else:
 
 DATA_DIR = APP_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+RESOURCES_DIR = (PROJECT_DIR / "resources") if getattr(sys, "frozen", False) else (APP_DIR / "resources")
+RESOURCES_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "hydro.db"
 UPLOAD_DIR = DATA_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -71,7 +73,9 @@ def password_verify(password, encoded):
 
 
 def init_database():
-    seed = PROJECT_DIR.parent / "first" / "data" / "hydro.db"
+    seed = RESOURCES_DIR / "hydro.db"
+    if not seed.exists():
+        seed = PROJECT_DIR.parent / "first" / "data" / "hydro.db"
     if getattr(sys, "frozen", False):
         seed = PROJECT_DIR / "data_seed" / "hydro.db"
 
@@ -120,7 +124,9 @@ def init_database():
         "ON observations(station, parameter, date)"
     )
 
-    stations_csv = PROJECT_DIR.parent / "first" / "data" / "stations.csv"
+    stations_csv = RESOURCES_DIR / "stations.csv"
+    if not stations_csv.exists():
+        stations_csv = PROJECT_DIR.parent / "first" / "data" / "stations.csv"
     if not stations_csv.exists() and getattr(sys, "frozen", False):
         stations_csv = PROJECT_DIR / "stations.csv"
     if stations_csv.exists():
@@ -132,6 +138,9 @@ def init_database():
             ("object_type", "TEXT"),
             ("river_section", "TEXT"),
             ("sort_order", "INTEGER"),
+            ("source_name", "TEXT"),
+            ("source_type", "TEXT"),
+            ("source_note", "TEXT"),
         ):
             if column not in station_columns:
                 con.execute(f"ALTER TABLE stations ADD COLUMN {column} {definition}")
@@ -376,6 +385,14 @@ def plot():
     fig.savefig(output, format="png", bbox_inches="tight")
     plt.close(fig)
     output.seek(0)
+    filename = f"{station_id or 'hydro'}_{parameter}.png"
+    if request.args.get("download") == "1":
+        return send_file(
+            output,
+            mimetype="image/png",
+            as_attachment=True,
+            download_name=filename,
+        )
     return send_file(output, mimetype="image/png")
 
 
@@ -423,6 +440,81 @@ def admin():
     )
 
 
+@app.route("/admin/station", methods=["POST"])
+@login_required
+def create_station():
+    if not is_admin():
+        return "Доступ запрещён", 403
+
+    station_id = request.form.get("station_id", "").strip()
+    display_name = request.form.get("display_name", "").strip()
+    river = request.form.get("river", "").strip()
+    lat = request.form.get("lat", "").strip()
+    lon = request.form.get("lon", "").strip()
+    object_type = request.form.get("object_type", "hub").strip()
+    river_section = request.form.get("river_section", "").strip()
+    source_name = request.form.get("source_name", "").strip()
+    source_type = request.form.get("source_type", "").strip()
+    source_note = request.form.get("source_note", "").strip()
+
+    try:
+        lat_value = float(lat)
+        lon_value = float(lon)
+        if not (-90 <= lat_value <= 90 and -180 <= lon_value <= 180):
+            raise ValueError
+    except ValueError:
+        return "Укажите корректные широту и долготу", 400
+
+    if not station_id or not display_name:
+        return "Укажите идентификатор и название объекта", 400
+
+    con = connect_db()
+    station_columns = {
+        row["name"] for row in con.execute("PRAGMA table_info(stations)").fetchall()
+    }
+    for column, definition in (
+        ("db_station", "TEXT"),
+        ("object_type", "TEXT"),
+        ("river_section", "TEXT"),
+        ("sort_order", "INTEGER"),
+        ("source_name", "TEXT"),
+        ("source_type", "TEXT"),
+        ("source_note", "TEXT"),
+    ):
+        if column not in station_columns:
+            con.execute(f"ALTER TABLE stations ADD COLUMN {column} {definition}")
+
+    con.execute(
+        """
+        INSERT INTO stations(
+            station_id,display_name,river,lat,lon,db_station,
+            object_type,river_section,sort_order,
+            source_name,source_type,source_note
+        )
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(station_id) DO UPDATE SET
+            display_name=excluded.display_name,
+            river=excluded.river,
+            lat=excluded.lat,
+            lon=excluded.lon,
+            db_station=excluded.db_station,
+            object_type=excluded.object_type,
+            river_section=excluded.river_section,
+            source_name=excluded.source_name,
+            source_type=excluded.source_type,
+            source_note=excluded.source_note
+        """,
+        (
+            station_id, display_name, river, lat_value, lon_value, station_id,
+            object_type, river_section, 0,
+            source_name, source_type, source_note,
+        ),
+    )
+    con.commit()
+    con.close()
+    return redirect(url_for("admin"))
+
+
 @app.route("/admin/password", methods=["POST"])
 @login_required
 def change_password():
@@ -460,7 +552,8 @@ def change_password():
 
 def import_observations(path, station_id, parameter):
     frame = pd.read_csv(path)
-    date_col = "Dates" if "Dates" in frame.columns else "date"
+    date_candidates = ("Dates", "date", "Date", "дата", "Дата")
+    date_col = next((name for name in date_candidates if name in frame.columns), None)
     possible_values = {
         "discharge": ["Discharge"],
         "level_upper": ["Absolute_Levels"],
@@ -473,8 +566,11 @@ def import_observations(path, station_id, parameter):
             if name in frame.columns:
                 value_col = name
                 break
-    if date_col not in frame.columns or value_col is None:
-        raise ValueError("Нужны столбцы даты (Dates/date) и значения")
+    if date_col is None or value_col is None:
+        raise ValueError(
+            "Нужны столбцы даты (Dates/date/дата) и значения "
+            "(Discharge/Absolute_Levels/value)"
+        )
 
     clean = pd.DataFrame({
         "date": pd.to_datetime(frame[date_col], dayfirst=True, errors="coerce"),
@@ -489,6 +585,32 @@ def import_observations(path, station_id, parameter):
     if station is None:
         con.close()
         raise ValueError("Неизвестная станция")
+
+    metadata_aliases = {
+        "river": ("river", "River", "река"),
+        "display_name": ("display_name", "name", "Название", "station_name"),
+        "lat": ("lat", "latitude", "широта"),
+        "lon": ("lon", "longitude", "долгота"),
+        "object_type": ("object_type", "type", "тип"),
+        "river_section": ("river_section", "section", "участок"),
+        "source_name": ("source_name", "istok", "исток"),
+        "source_type": ("source_type", "source_type", "источник"),
+        "source_note": ("source_note", "note", "ТП", "описание"),
+    }
+    metadata = {}
+    for column, aliases in metadata_aliases.items():
+        alias = next((name for name in aliases if name in frame.columns), None)
+        if alias is not None:
+            values = frame[alias].dropna().astype(str).str.strip()
+            if not values.empty:
+                metadata[column] = values.iloc[0]
+
+    if metadata:
+        updates = ", ".join(f"{column}=?" for column in metadata)
+        con.execute(
+            f"UPDATE stations SET {updates} WHERE station_id=?",
+            [*metadata.values(), station_id],
+        )
 
     replaced = 0
     for row in clean.itertuples(index=False):
@@ -518,8 +640,37 @@ def import_observations(path, station_id, parameter):
     return len(clean) - replaced, replaced
 
 
+def start_server():
+    app.run(
+        host="127.0.0.1",
+        port=5055,
+        debug=False,
+        use_reloader=False,
+        threaded=True,
+    )
+
+
 if __name__ == "__main__":
     init_database()
-    import webbrowser
-    webbrowser.open("http://127.0.0.1:5055/login")
-    app.run(host="127.0.0.1", port=5055, debug=False, use_reloader=False)
+
+    try:
+        import threading
+        from PyQt5.QtCore import QUrl
+        from PyQt5.QtWidgets import QApplication
+        from PyQt5.QtWebEngineWidgets import QWebEngineView
+    except ImportError as exc:
+        raise RuntimeError(
+            "Для клиентского окна требуется PyQt5. "
+            "Установите зависимости из requirements.txt"
+        ) from exc
+
+    server_thread = threading.Thread(target=start_server, daemon=True)
+    server_thread.start()
+
+    qt_app = QApplication(sys.argv)
+    window = QWebEngineView()
+    window.setWindowTitle("HydroGIS")
+    window.resize(1280, 820)
+    window.load(QUrl("http://127.0.0.1:5055/login"))
+    window.show()
+    sys.exit(qt_app.exec_())
