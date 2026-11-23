@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HydroGIS — вход</title>
+  <style>
+    body { margin:0; min-height:100vh; display:grid; place-items:center;
+      font-family:Segoe UI,Arial,sans-serif; background:#eef3f8; color:#18324a; }
+    .card { width:min(380px,calc(100vw - 40px)); background:white; border-radius:16px;
+      padding:28px; box-shadow:0 12px 35px rgba(31,55,82,.12); }
+    h1 { margin:0 0 8px; } p { color:#65798c; }
+    input,button { width:100%; box-sizing:border-box; margin-top:10px; padding:12px;
+      border-radius:9px; font-size:15px; }
+    input { border:1px solid #ccd8e5; }
+    button { border:0; background:#1769aa; color:white; cursor:pointer; }
+    .guest { background:#e9f1f8; color:#1769aa; text-decoration:none; display:block;
+      text-align:center; margin-top:10px; padding:12px; border-radius:9px; }
+    .error { color:#b42318; }
+  </style>
+</head>
+<body>
+  <form class="card" method="post">
+    <h1>HydroGIS</h1>
+    <p>Геоинформационная система гидрологического режима</p>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <input name="username" placeholder="Имя пользователя" autocomplete="username" required>
+    <input name="password" type="password" placeholder="Пароль" autocomplete="current-password" required>
+    <button type="submit">Войти как администратор</button>
+    <a class="guest" href="/guest">Войти гостем</a>
+  </form>
+</body>
+</html>

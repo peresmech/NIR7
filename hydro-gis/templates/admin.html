@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>HydroGIS — администрирование</title>
+  <style>
+    body { margin:0; font-family:Segoe UI,Arial,sans-serif; background:#eef3f8; color:#26384a; }
+    header { height:58px; background:#18324a; color:white; display:flex; align-items:center;
+      justify-content:space-between; padding:0 18px; }
+    header a { color:white; } main { max-width:980px; margin:24px auto; background:white;
+      border-radius:14px; padding:24px; }
+    select,input,button { padding:10px; margin:5px 10px 10px 0; border:1px solid #ccd8e5; border-radius:8px; }
+    button { background:#1769aa; color:white; border:0; }
+    .ok { color:#18794e; } .error { color:#b42318; }
+    table { width:100%; border-collapse:collapse; } th,td { text-align:left; padding:8px;
+      border-bottom:1px solid #e3eaf1; }
+  </style>
+</head>
+<body>
+  <header><strong>Администрирование</strong><div><a href="/">К приложению</a> &nbsp; <a href="/logout">Выход</a></div></header>
+  <main>
+    <h2>Загрузка гидрологических данных</h2>
+    {% if message %}<p class="ok">{{ message }}</p>{% endif %}
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <form method="post" enctype="multipart/form-data">
+      <select name="station_id" required>
+        <option value="">Выберите объект</option>
+        {% for s in stations %}<option value="{{ s.station_id }}">{{ s.display_name }}</option>{% endfor %}
+      </select>
+      <select name="parameter" required>
+        <option value="">Параметр</option>
+        <option value="discharge">Расход воды</option>
+        <option value="level_upper">Верхний бьеф</option>
+        <option value="level_lower">Нижний бьеф</option>
+        <option value="level">Уровень на гидропосте</option>
+      </select>
+      <input type="file" name="csv_file" accept=".csv" required>
+      <button type="submit">Импортировать</button>
+    </form>
+    <p>CSV должен содержать столбец <code>Dates</code> или <code>date</code> и значение:
+      <code>Discharge</code>, <code>Absolute_Levels</code> или <code>value</code>.</p>
+    <h3>Смена пароля администратора</h3>
+    <form method="post" action="/admin/password">
+      <input type="password" name="password" minlength="8" placeholder="Новый пароль" required>
+      <input type="password" name="password_confirm" minlength="8" placeholder="Повторите пароль" required>
+      <button type="submit">Сменить пароль</button>
+    </form>
+    <h3>Последние импорты</h3>
+    <table>
+      <tr><th>Дата</th><th>Станция</th><th>Параметр</th><th>Файл</th><th>Строки</th></tr>
+      {% for r in imports %}
+      <tr><td>{{ r.imported_at }}</td><td>{{ r.station_id }}</td><td>{{ r.parameter }}</td>
+        <td>{{ r.filename }}</td><td>{{ r.rows_added }}</td></tr>
+      {% endfor %}
+    </table>
+  </main>
+</body>
+</html>

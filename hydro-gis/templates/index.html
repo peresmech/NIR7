@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HydroGIS</title>
+  <style>
+    :root { --nav:#18324a; --accent:#1769aa; --bg:#eef3f8; }
+    body { margin:0; font-family:Segoe UI,Arial,sans-serif; background:var(--bg); color:#26384a; }
+    header { height:58px; background:var(--nav); color:white; display:flex; align-items:center;
+      justify-content:space-between; padding:0 18px; }
+    header a { color:white; text-decoration:none; margin-left:14px; }
+    main { height:calc(100vh - 58px); display:grid; grid-template-columns:280px 1fr; }
+    aside { background:white; padding:16px; overflow:auto; border-right:1px solid #d9e3ed; }
+    aside select,aside input,aside button { width:100%; box-sizing:border-box; padding:9px;
+      margin:5px 0 10px; border:1px solid #ccd8e5; border-radius:8px; }
+    aside button { background:var(--accent); color:white; border:0; cursor:pointer; }
+    .station { padding:9px; border-radius:8px; cursor:pointer; }
+    .station:hover,.station.active { background:#eaf2f9; }
+    #mapFrame { width:100%; height:46%; border:0; background:white; }
+    #chartFrame { width:100%; height:54%; border:0; background:white; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>HydroGIS</strong>
+    <div>{{ username }}{% if is_admin %}<a href="/admin">Администрирование</a>{% endif %}<a href="/logout">Выход</a></div>
+  </header>
+  <main>
+    <aside>
+      <label>Обзор карты</label>
+      <select id="overview">
+        <option value="all">Вся система</option>
+        <option value="volga">Волга</option>
+        <option value="kama">Кама</option>
+      </select>
+      <label>Поиск объекта</label>
+      <input id="search" placeholder="Название">
+      <label>Параметр графика</label>
+      <select id="parameter">
+        <option value="discharge">Расход воды</option>
+        <option value="level_upper">Верхний бьеф</option>
+        <option value="level_lower">Нижний бьеф</option>
+        <option value="level">Уровень на гидропосте</option>
+      </select>
+      <label>С даты</label><input id="dateFrom" type="date" value="2010-01-01">
+      <label>По дату</label><input id="dateTo" type="date">
+      <button id="showChart">Построить график</button>
+      <h3>Объекты</h3>
+      <div id="stations">
+        {% for s in stations %}
+        <div class="station" data-id="{{ s.station_id }}" data-river="{{ s.river }}"
+             data-name="{{ s.display_name }}" data-type="{{ s.object_type }}">
+          {{ s.display_name }}
+        </div>
+        {% endfor %}
+      </div>
+    </aside>
+    <section>
+      <iframe id="mapFrame" src="/map"></iframe>
+      <iframe id="chartFrame" src="about:blank"></iframe>
+    </section>
+  </main>
+  <script>
+    let selected = null;
+    const stations = document.querySelectorAll(".station");
+    function updateMap() {
+      const overview = document.getElementById("overview").value;
+      document.getElementById("mapFrame").src =
+        "/map?overview=" + encodeURIComponent(overview) +
+        (selected ? "&station=" + encodeURIComponent(selected) : "");
+    }
+    stations.forEach(function(el) {
+      el.addEventListener("click", function() {
+        stations.forEach(s => s.classList.remove("active"));
+        el.classList.add("active");
+        selected = el.dataset.id;
+        updateMap();
+        document.getElementById("showChart").click();
+      });
+    });
+    document.getElementById("overview").addEventListener("change", updateMap);
+    document.getElementById("search").addEventListener("input", function() {
+      const text = this.value.toLowerCase();
+      stations.forEach(el => el.style.display =
+        el.dataset.name.toLowerCase().includes(text) ? "block" : "none");
+    });
+    document.getElementById("showChart").addEventListener("click", function() {
+      if (!selected) { alert("Выберите объект из списка"); return; }
+      const params = new URLSearchParams({
+        station: selected,
+        parameter: document.getElementById("parameter").value,
+        from: document.getElementById("dateFrom").value,
+        to: document.getElementById("dateTo").value
+      });
+      document.getElementById("chartFrame").src = "/plot?" + params.toString();
+    });
+  </script>
+</body>
+</html>
