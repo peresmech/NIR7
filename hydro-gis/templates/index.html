@@ -17,6 +17,9 @@
     aside button { background:var(--accent); color:white; border:0; cursor:pointer; }
     .station { padding:9px; border-radius:8px; cursor:pointer; }
     .station:hover,.station.active { background:#eaf2f9; }
+    .station-group { margin:10px 0 6px; }
+    .station-group h4 { margin:12px 0 5px; color:#4d6680; font-size:12px;
+      text-transform:uppercase; letter-spacing:.25px; }
     section { position:relative; min-width:0; }
     #mapFrame { width:100%; height:100%; border:0; background:white; display:block; }
     #graphDrawer {
@@ -44,6 +47,7 @@
     }
     .graph-icon span { display:none; }
     #graphDrawer.open .graph-icon span { display:inline; }
+    .graph-icon svg { width:20px; height:20px; min-width:20px; }
     #chartOverlay {
       position:absolute; z-index:30; display:none; top:24px; left:24px;
       right:266px; bottom:24px; background:white; border:1px solid #bfcddd;
@@ -78,23 +82,20 @@
       </select>
       <label>Поиск объекта</label>
       <input id="search" placeholder="Название">
-      <label>Параметр графика</label>
-      <select id="parameter">
-        <option value="discharge">Расход воды</option>
-        <option value="level_upper">Верхний бьеф</option>
-        <option value="level_lower">Нижний бьеф</option>
-        <option value="level">Уровень на гидропосте</option>
-      </select>
-      <label>С даты</label><input id="dateFrom" type="date" value="2010-01-01">
+      <label>С даты</label><input id="dateFrom" type="date">
       <label>По дату</label><input id="dateTo" type="date">
-      <button id="showChart">Выбрать график</button>
       <h3>Объекты</h3>
       <div id="stations">
-        {% for s in stations %}
-        <div class="station" data-id="{{ s.station_id }}" data-river="{{ s.river }}"
-             data-name="{{ s.display_name }}" data-type="{{ s.object_type }}">
-          {{ s.display_name }}
-        </div>
+        {% for group_name, group_stations in station_groups.items() %}
+        <section class="station-group">
+          <h4>{{ group_name }}</h4>
+          {% for s in group_stations %}
+          <div class="station" data-id="{{ s.station_id }}" data-river="{{ s.river }}"
+               data-name="{{ s.display_name }}" data-type="{{ s.object_type }}">
+            {{ s.display_name }}
+          </div>
+          {% endfor %}
+        </section>
         {% endfor %}
       </div>
     </aside>
@@ -120,10 +121,10 @@
     let selected = null;
     const stations = document.querySelectorAll(".station");
     const thumbParameters = [
-      ["discharge", "Расход воды", "Q"],
-      ["level_upper", "Верхний бьеф", "ВБ"],
-      ["level_lower", "Нижний бьеф", "НБ"],
-      ["level", "Уровень", "У"]
+      ["discharge", "Расход воды", '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 16.5L8 11l4 3.5L20.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15.5 5H20.5V10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'],
+      ["level_upper", "Верхний бьеф", '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 14C6 12 8 12 10 14C12 16 14 16 16 14C18 12 20 12 22 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 18H20M12 4V10M9 7L12 4L15 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'],
+      ["level_lower", "Нижний бьеф", '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 14C6 12 8 12 10 14C12 16 14 16 16 14C18 12 20 12 22 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 18H20M12 20V14M9 17L12 20L15 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'],
+      ["level", "Уровень", '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 3V21M9 7H18M9 12H16M9 17H18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>']
     ];
     function chartParams(parameter) {
       return new URLSearchParams({
@@ -144,7 +145,7 @@
         button.type = "button";
         button.className = "graph-icon";
         button.title = item[1];
-        button.innerHTML = '<b>' + item[2] + '</b><span>' + item[1] + '</span>';
+        button.innerHTML = item[2] + '<span>' + item[1] + '</span>';
         button.addEventListener("click", function() {
           openChart(item[1], url);
         });
@@ -193,13 +194,12 @@
       stations.forEach(el => el.style.display =
         el.dataset.name.toLowerCase().includes(text) ? "block" : "none");
     });
-    document.getElementById("showChart").addEventListener("click", function() {
-      if (!selected) { alert("Выберите объект из списка"); return; }
-      const parameterSelect = document.getElementById("parameter");
-      const parameter = parameterSelect.value;
-      const label = parameterSelect.options[parameterSelect.selectedIndex].text;
-      openChart(label, "/plot?" + chartParams(parameter).toString());
-      updateGraphMenu();
+    window.addEventListener("message", function(event) {
+      if (!event.data || event.data.type !== "hydroStationSelected") return;
+      const station = Array.from(stations).find(
+        el => el.dataset.id === event.data.stationId
+      );
+      if (station) station.click();
     });
     document.getElementById("dateFrom").addEventListener("change", updateGraphMenu);
     document.getElementById("dateTo").addEventListener("change", updateGraphMenu);

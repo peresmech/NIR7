@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import io
+import json
 import os
 import secrets
 import shutil
@@ -12,6 +13,7 @@ from pathlib import Path
 import folium
 import matplotlib
 import pandas as pd
+from branca.element import MacroElement, Template
 from flask import Flask, redirect, render_template, request, send_file, session, url_for
 from werkzeug.utils import secure_filename
 
@@ -265,9 +267,15 @@ def index():
         """
     ).fetchall()
     con.close()
+    station_groups = {}
+    for station in stations:
+        section = station["river_section"] if station["river_section"] else "Общие объекты"
+        group_name = f"{station['river']} · {section}" if station["river"] else section
+        station_groups.setdefault(group_name, []).append(station)
     return render_template(
         "index.html",
         stations=stations,
+        station_groups=station_groups,
         username=current_user(),
         is_admin=is_admin(),
     )
@@ -318,6 +326,41 @@ def map_page():
             fill=True,
             fill_color=color,
         ).add_to(m)
+
+    selections = [
+        {
+            "lat": row["lat"],
+            "lon": row["lon"],
+            "station_id": row["station_id"],
+        }
+        for row in rows
+    ]
+    click_script = MacroElement()
+    click_script._template = Template(
+        """
+        {% macro script(this, kwargs) %}
+        setTimeout(function() {
+          var map = {{ this._parent.get_name() }};
+          var selections = """ + json.dumps(selections, ensure_ascii=False) + """;
+          Object.values(map._layers).forEach(function(layer) {
+            if (!(layer instanceof L.CircleMarker) || !layer._latlng) return;
+            selections.forEach(function(selection) {
+              if (Math.abs(layer._latlng.lat - selection.lat) < 0.00001 &&
+                  Math.abs(layer._latlng.lng - selection.lon) < 0.00001) {
+                layer.on("click", function() {
+                  window.parent.postMessage({
+                    type: "hydroStationSelected",
+                    stationId: selection.station_id
+                  }, "*");
+                });
+              }
+            });
+          });
+        }, 250);
+        {% endmacro %}
+        """
+    )
+    m.get_root().add_child(click_script)
 
     return m.get_root().render()
 
