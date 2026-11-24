@@ -6,7 +6,7 @@ if [ ! -x ".venv/bin/python" ]; then
 fi
 .venv/bin/python -m pip install --no-cache-dir -r requirements.txt
 .venv/bin/python -m pip install --no-cache-dir pyinstaller
-.venv/bin/python -m PyInstaller --noconfirm --onedir --name GidroRezhim \
+.venv/bin/python -m PyInstaller --noconfirm --clean --windowed --onedir --name HydroGIS \
   --collect-all PyQt5.QtWebEngineWidgets \
   --collect-all PyQt5.QtWebEngineCore \
   --hidden-import PyQt5.QtWebEngineWidgets \
@@ -15,4 +15,4 @@ fi
   --add-data "static:static" \
   --add-data "resources:resources" \
   app.py
-echo "Переносимая сборка: dist/GidroRezhim (скопируйте всю папку)"
+echo "Сборка готова: dist/HydroGIS (скопируйте всю папку)"

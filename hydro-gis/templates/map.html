@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/static/vendor/leaflet.css">
   <style>
-    html,body,#map { width:100%;height:100%;margin:0;background:#eaf0ef; }
+    html,body,#map { width:100%;height:100%;margin:0;background-color:#edf3ee; }
+    #map { background-image:linear-gradient(#9fb9ad18 1px,transparent 1px),
+      linear-gradient(90deg,#9fb9ad18 1px,transparent 1px);background-size:72px 72px; }
     .leaflet-popup-content { line-height:1.55; }
     .leaflet-control-attribution { font-size:10px; }
     .map-legend { background:rgba(255,255,255,.95); padding:9px 12px;
@@ -19,11 +21,16 @@
       background:#1769aa; margin:0 10px 0 5px; }
     .local-notice { background:rgba(255,255,255,.92); padding:4px 7px;
       border-radius:5px; color:#526662; font:10px Segoe UI,Arial,sans-serif; }
+    #mapStatus { position:absolute; z-index:600; left:50%; top:50%; transform:translate(-50%,-50%);
+      max-width:340px; padding:12px 16px; border:1px solid #c8d6d3; border-radius:8px;
+      background:#fffffff2; color:#344c49; box-shadow:0 2px 8px #0002;
+      font:13px Segoe UI,Arial,sans-serif; text-align:center; }
   </style>
   <script src="/static/vendor/leaflet.js"></script>
 </head>
 <body>
   <div id="map" aria-label="Карта гидрологических объектов"></div>
+  <div id="mapStatus" role="status">Загружаем локальную карту…</div>
   <script>
     const stations = {{ stations|tojson }};
     const selectedStation = {{ selected_station|tojson }};
@@ -45,10 +52,10 @@
           pane:"riverNetwork",
           style:feature => ({
             color:feature.properties && feature.properties.kind &&
-              feature.properties.kind.toLowerCase().includes("главн") ? "#167e91" : "#62aeb5",
+              feature.properties.kind.toLowerCase().includes("главн") ? "#087f91" : "#56a8ad",
             weight:feature.properties && feature.properties.kind &&
-              feature.properties.kind.toLowerCase().includes("главн") ? 3 : 1.5,
-            opacity:.9
+              feature.properties.kind.toLowerCase().includes("главн") ? 4 : 2,
+            opacity:.95
           }),
           onEachFeature:(feature,layer) => {
             const props = feature.properties || {};
@@ -57,10 +64,13 @@
         }).addTo(map);
         if (riverLayer.getBounds().isValid()) bounds.extend(riverLayer.getBounds());
         addStations();
+        document.getElementById("mapStatus").hidden = true;
       })
       .catch(error => {
         console.error(error);
         addStations();
+        document.getElementById("mapStatus").textContent =
+          "Не удалось загрузить локальную сеть рек. Отображены только гидрообъекты.";
       });
 
     function addStations() {
@@ -98,6 +108,7 @@
       bounds.extend([station.lat,station.lon]);
     });
     if (bounds.isValid()) map.fitBounds(bounds,{padding:[36,36],maxZoom:8});
+    requestAnimationFrame(() => map.invalidateSize());
     }
 
     const legend = L.control({position:"topright"});

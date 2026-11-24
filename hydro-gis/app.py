@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import io
 import json
+import logging
 import os
 import secrets
 import shutil
@@ -29,10 +30,11 @@ import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter, MonthLocator, YearLocator
 
 
-APP_DIR = Path(__file__).resolve().parent
 if getattr(sys, "frozen", False):
+    APP_DIR = Path(sys.executable).resolve().parent
     PROJECT_DIR = Path(sys._MEIPASS)
 else:
+    APP_DIR = Path(__file__).resolve().parent
     PROJECT_DIR = APP_DIR
 
 DATA_DIR = APP_DIR / "data"
@@ -44,14 +46,18 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_DIR = DATA_DIR / "backups"
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-ICON_PATH = RESOURCES_DIR / "hydro-regime.ico"
+ICON_PATH = RESOURCES_DIR / "hydrogis.ico"
 NETWORK_PATH = RESOURCES_DIR / "network_edges.geojson"
 
 SECRET_FILE = DATA_DIR / ".secret"
 if not SECRET_FILE.exists():
     SECRET_FILE.write_text(secrets.token_hex(32), encoding="utf-8")
 
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    template_folder=str(PROJECT_DIR / "templates"),
+    static_folder=str(PROJECT_DIR / "static"),
+)
 app.secret_key = SECRET_FILE.read_text(encoding="utf-8")
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -351,7 +357,17 @@ def index():
             display_name
         """
     ).fetchall()
+    date_bounds = con.execute(
+        "SELECT MIN(substr(date,1,10)) AS first_date, "
+        "MAX(substr(date,1,10)) AS last_date FROM observations"
+    ).fetchone()
     con.close()
+    first_date = date_bounds["first_date"] or "2010-01-01"
+    last_date = date_bounds["last_date"] or first_date
+    range_days = max(
+        (datetime.fromisoformat(last_date) - datetime.fromisoformat(first_date)).days,
+        0,
+    )
     station_groups = {}
     section_labels = {
         "upper_volga": "Верхний каскад Волги",
@@ -370,6 +386,9 @@ def index():
         station_groups=station_groups,
         username=current_user(),
         is_admin=is_admin(),
+        date_min=first_date,
+        date_max=last_date,
+        range_days=range_days,
     )
 
 
@@ -429,6 +448,7 @@ def map_data():
         return {"type": "FeatureCollection", "features": []}
     with NETWORK_PATH.open(encoding="utf-8") as file:
         collection = json.load(file)
+    collection = clip_network_to_study_area(collection)
     overview = request.args.get("overview", "all")
     if overview in ("volga", "kama"):
         river_name = {"volga": "Волга", "kama": "Кама"}[overview]
@@ -439,6 +459,48 @@ def map_data():
             or feature.get("properties", {}).get("parent") == river_name
         ]
     return collection
+
+
+def clip_network_to_study_area(collection):
+    west, south, east, north = 20.0, 40.0, 70.0, 70.0
+    features = []
+    for feature in collection.get("features", []):
+        geometry = feature.get("geometry") or {}
+        geometry_type = geometry.get("type")
+        coordinates = geometry.get("coordinates", [])
+        if geometry_type == "LineString":
+            lines = [coordinates]
+        elif geometry_type == "MultiLineString":
+            lines = coordinates
+        else:
+            features.append(feature)
+            continue
+
+        clipped_lines = []
+        for line in lines:
+            segment = []
+            for point in line:
+                longitude, latitude = point[:2]
+                if west <= longitude <= east and south <= latitude <= north:
+                    segment.append(point)
+                else:
+                    if len(segment) > 1:
+                        clipped_lines.append(segment)
+                    segment = []
+            if len(segment) > 1:
+                clipped_lines.append(segment)
+
+        if not clipped_lines:
+            continue
+        feature_geometry = dict(geometry)
+        if geometry_type == "LineString" and len(clipped_lines) == 1:
+            feature_geometry["coordinates"] = clipped_lines[0]
+        else:
+            feature_geometry["type"] = "MultiLineString"
+            feature_geometry["coordinates"] = clipped_lines
+        features.append({**feature, "geometry": feature_geometry})
+
+    return {**collection, "features": features}
 
 
 @app.route("/plot")
@@ -475,7 +537,7 @@ def plot():
     unit = parameter_meta["unit"] if parameter_meta else ""
     compact = request.args.get("mini") == "1"
     fig, ax = plt.subplots(
-        figsize=(2.7, 1.25) if compact else (10, 4.8),
+        figsize=(2.7, 1.25) if compact else (8.8, 3.8),
         dpi=90 if compact else 130,
     )
     fig.patch.set_facecolor("#f5f7fa")
@@ -719,7 +781,7 @@ def compare():
     con.close()
     if not frame.empty:
         frame["date"] = pd.to_datetime(frame["date"])
-    fig, ax = plt.subplots(figsize=(11, 6), dpi=130)
+    fig, ax = plt.subplots(figsize=(8.8, 4), dpi=100)
     if frame.empty:
         ax.text(0.5, 0.5, "Нет данных для сравнения", ha="center", va="center")
     elif mode == "annual":
@@ -1166,16 +1228,6 @@ def import_observations(path, station_id, parameter, quality_flag="unreviewed", 
     return len(clean) - replaced, replaced
 
 
-def start_server():
-    app.run(
-        host="127.0.0.1",
-        port=5055,
-        debug=False,
-        use_reloader=False,
-        threaded=True,
-    )
-
-
 if __name__ == "__main__":
     init_database()
 
@@ -1184,22 +1236,61 @@ if __name__ == "__main__":
         from PyQt5.QtCore import QUrl
         from PyQt5.QtWidgets import QApplication
         from PyQt5.QtWebEngineWidgets import QWebEngineView
+        from logging.handlers import RotatingFileHandler
+        from werkzeug.serving import WSGIRequestHandler, make_server
     except ImportError as exc:
         raise RuntimeError(
             "Для клиентского окна требуется PyQt5. "
             "Установите зависимости из requirements.txt"
         ) from exc
 
-    server_thread = threading.Thread(target=start_server, daemon=True)
+    file_handler = RotatingFileHandler(
+        DATA_DIR / "hydrogis.log",
+        maxBytes=1_000_000,
+        backupCount=2,
+        encoding="utf-8",
+    )
+    app.logger.handlers.clear()
+    app.logger.addHandler(file_handler)
+    app.logger.setLevel(logging.INFO)
+    app.logger.propagate = False
+
+    class LocalRequestHandler(WSGIRequestHandler):
+        def log_message(self, format, *args):
+            if len(args) > 1 and str(args[1]).startswith("5"):
+                app.logger.error(format, *args)
+
+    http_server = make_server(
+        "127.0.0.1",
+        0,
+        app,
+        threaded=True,
+        request_handler=LocalRequestHandler,
+    )
+    server_thread = threading.Thread(target=http_server.serve_forever, daemon=True)
     server_thread.start()
 
     qt_app = QApplication(sys.argv)
     window = QWebEngineView()
-    window.setWindowTitle("ГидроРежим — ГИС гидрологических данных")
+    window.setWindowTitle("HydroGIS — Hydrological Data GIS")
     window.resize(1280, 820)
     if ICON_PATH.is_file():
         from PyQt5.QtGui import QIcon
         window.setWindowIcon(QIcon(str(ICON_PATH)))
-    window.load(QUrl("http://127.0.0.1:5055/login"))
+
+    def show_load_error(ok):
+        if not ok:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                window,
+                "HydroGIS",
+                "Не удалось открыть локальный интерфейс. "
+                "Проверьте, что папка приложения скопирована целиком.",
+            )
+
+    window.loadFinished.connect(show_load_error)
+    window.load(QUrl(f"http://127.0.0.1:{http_server.server_port}/login"))
     window.showMaximized()
-    sys.exit(qt_app.exec_())
+    exit_code = qt_app.exec_()
+    http_server.shutdown()
+    sys.exit(exit_code)

@@ -13,6 +13,11 @@
     .label { color:#63788d; font-size:13px; }
     .value { font-size:21px; font-weight:650; margin-top:5px; }
     .note { padding:12px; background:#fff6dd; border-radius:8px; }
+    table { width:100%; border-collapse:collapse; border:1px solid #cbd8e5; }
+    th,td { padding:9px 12px; border:1px solid #d5e0ea; text-align:right; }
+    th:first-child,td:first-child { text-align:left; }
+    th { background:#edf3f8; color:#38536c; font-weight:650; }
+    tbody tr:nth-child(even) { background:#f7f9fb; }
   </style>
 </head>
 <body>
@@ -31,11 +36,13 @@
     <div class="card"><div class="label">Максимальный рост за сутки*</div><div class="value">{{ "%.3f"|format(stats.max_rise_per_day) }} {{ meta.unit }}/сут</div></div>
     <div class="card"><div class="label">Максимальное снижение за сутки*</div><div class="value">{{ "%.3f"|format(stats.max_fall_per_day) }} {{ meta.unit }}/сут</div></div>
     {% endif %}
-    <div class="card"><div class="label">Не проверено / подозрительно</div><div class="value">{{ stats.unreviewed }} / {{ stats.suspect }}</div></div>
+    <div class="card"><div class="label">Без отметки о проверке</div><div class="value">{{ stats.unreviewed }}</div></div>
+    <div class="card"><div class="label">Отмечено как подозрительные</div><div class="value">{{ stats.suspect }}</div></div>
   </div>
+  <p class="period">Статус проверки описывает качество данных, а не наличие ошибки: новые импортированные наблюдения по умолчанию не проверены.</p>
   <p class="period">* Скорость рассчитана между соседними наблюдениями и нормирована на сутки.</p>
   <h2>Межгодовые показатели</h2>
-  <table style="width:100%;border-collapse:collapse">
+  <table>
     <thead><tr><th>Год</th><th>Среднее, {{ meta.unit }}</th><th>Минимум</th><th>Максимум</th><th>Наблюдений</th></tr></thead>
     <tbody>{% for row in annual_rows %}
       <tr><td>{{ row.year }}</td><td>{{ "%.3f"|format(row.mean) }}</td>

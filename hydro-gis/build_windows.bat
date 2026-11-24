@@ -16,8 +16,8 @@ if not exist ".venv\Scripts\python.exe" (
 if errorlevel 1 goto failed
 ".venv\Scripts\python.exe" -m pip install --no-cache-dir pyinstaller
 if errorlevel 1 goto failed
-".venv\Scripts\python.exe" -m PyInstaller --noconfirm --onedir --name GidroRezhim ^
-  --icon "resources\hydro-regime.ico" ^
+".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --windowed --onedir --name HydroGIS ^
+  --icon "resources\hydrogis.ico" ^
   --collect-all PyQt5.QtWebEngineWidgets ^
   --collect-all PyQt5.QtWebEngineCore ^
   --hidden-import PyQt5.QtWebEngineWidgets ^
@@ -28,14 +28,9 @@ if errorlevel 1 goto failed
   app.py
 if errorlevel 1 goto failed
 
-copy /y "start_portable_windows.bat" "dist\GidroRezhim\Start-GidroRezhim.bat" >nul
-if errorlevel 1 goto failed
-
 echo.
-echo Переносимая сборка готова: dist\GidroRezhim
-echo Скопируйте ВСЮ эту папку на Windows-компьютер. Python и Интернет там не нужны.
-echo Запуск: Start-GidroRezhim.bat или GidroRezhim.exe
-pause
+echo Сборка готова: dist\HydroGIS\HydroGIS.exe
+echo Для переноса скопируйте всю папку dist\HydroGIS.
 exit /b 0
 
 :failed

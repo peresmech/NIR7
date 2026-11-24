@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ГидроРежим — ГИС гидрологических данных</title>
+  <title>HydroGIS — Hydrological Data GIS</title>
   <style>
     :root { --nav:#18324a; --accent:#1769aa; --bg:#eef3f8; }
     body { margin:0; font-family:Segoe UI,Arial,sans-serif; background:var(--bg); color:#26384a; }
@@ -54,16 +54,13 @@
     .graph-card-footer button,.graph-card-footer a { border:0; border-radius:6px;
       color:#1769aa; background:#edf4fa; text-decoration:none; padding:6px 8px;
       cursor:pointer; white-space:nowrap; }
-    .station-check { width:auto!important; height:auto; padding:0!important;
-      margin:0 7px 0 0!important; border:0!important; vertical-align:middle;
-      accent-color:#1769aa; }
     #chartOverlay {
-      position:absolute; z-index:30; display:none; top:24px; left:24px;
-      right:24px; bottom:24px; background:white; border:1px solid #bfcddd;
+      position:absolute; z-index:30; display:none; top:50%; left:50%;
+      width:min(1100px,calc(100% - 32px)); height:min(660px,calc(100% - 32px));
+      transform:translate(-50%,-50%); background:white; border:1px solid #bfcddd;
       border-radius:14px; box-shadow:0 16px 40px rgba(18,43,69,.28); overflow:hidden;
     }
     #chartOverlay.open { display:flex; flex-direction:column; }
-    #chartOverlay.with-drawer { right:330px; }
     .overlay-bar { height:48px; min-height:48px; display:flex; align-items:center;
       justify-content:space-between; padding:0 10px 0 16px; background:#f5f8fb;
       border-bottom:1px solid #dde6ef; }
@@ -74,22 +71,72 @@
       background:white; color:#1769aa; text-decoration:none; padding:7px 10px;
       cursor:pointer; font-size:13px;
     }
-    #chartOverlayFrame { flex:1; width:100%; border:0; background:white; }
+    #chartOverlayFrame { flex:1; min-height:300px; width:100%; border:0; background:white; }
+    .date-range { padding:9px 18px 12px; background:#f6f9fc; border-top:1px solid #e0e8f0; }
+    .date-range-head { display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:5px; color:#4e6276; font-size:12px; }
+    .date-range-head strong { color:#18324a; font-size:13px; font-weight:600; }
+    .range-controls { position:relative; height:26px;
+      --range-from:0%; --range-to:100%; }
+    .range-controls::before { content:""; position:absolute; z-index:0; left:8px; right:8px;
+      top:11px; height:4px; border-radius:4px;
+      background:linear-gradient(to right,#cbd8e5 var(--range-from),#1769aa var(--range-from),
+        #1769aa var(--range-to),#cbd8e5 var(--range-to)); }
+    .range-controls input[type=range] { position:absolute; inset:0; width:100%; height:26px;
+      z-index:1; margin:0; background:transparent; pointer-events:none; appearance:none; }
+    .range-controls input[type=range]::-webkit-slider-runnable-track { height:4px;
+      background:transparent; }
+    .range-controls input[type=range]::-moz-range-track { height:4px;
+      background:transparent; }
+    .range-controls input[type=range]::-webkit-slider-thumb { width:16px; height:16px;
+      margin-top:-6px; border:2px solid white; border-radius:50%; background:#1769aa;
+      box-shadow:0 1px 4px #18324a55; pointer-events:auto; appearance:none; cursor:ew-resize; }
+    .range-controls input[type=range]::-moz-range-thumb { width:13px; height:13px;
+      border:2px solid white; border-radius:50%; background:#1769aa;
+      box-shadow:0 1px 4px #18324a55; pointer-events:auto; cursor:ew-resize; }
+    #dateFrom,#dateTo { display:none; }
+    #compareDialog { position:fixed; z-index:80; inset:0; display:none; align-items:center;
+      justify-content:center; padding:20px; background:#10283db3; }
+    #compareDialog.open { display:flex; }
+    .compare-panel { width:min(580px,100%); max-height:90vh; display:flex; flex-direction:column;
+      padding:20px; box-sizing:border-box; border-radius:14px; background:white;
+      box-shadow:0 18px 60px #10283d55; }
+    .compare-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .compare-heading h2 { margin:0; font-size:20px; color:#18324a; }
+    .compare-heading button,.compare-actions button { padding:8px 12px; border:1px solid #cbd8e5;
+      border-radius:7px; color:#18324a; background:white; cursor:pointer; }
+    .compare-panel label { margin-top:12px; color:#52677b; font-size:13px; }
+    .compare-panel select,.compare-panel input[type=search] { box-sizing:border-box; width:100%;
+      margin-top:5px; padding:10px; border:1px solid #cbd8e5; border-radius:8px; background:white; }
+    #compareStationList { overflow:auto; min-height:120px; max-height:36vh; margin-top:8px;
+      border:1px solid #d9e3ed; border-radius:8px; }
+    .compare-station { display:flex; align-items:center; gap:9px; padding:9px 11px;
+      border-bottom:1px solid #edf1f5; color:#26384a!important; cursor:pointer; }
+    .compare-station:last-child { border-bottom:0; }
+    .compare-station input { accent-color:#1769aa; }
+    .compare-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap;
+      gap:8px; margin-top:12px; }
+    #compareCount { margin-right:auto; color:#63788d; font-size:13px; }
+    .compare-actions .primary { border-color:#1769aa; color:white; background:#1769aa; }
+    .map-error { position:absolute; z-index:500; left:50%; top:50%; transform:translate(-50%,-50%);
+      max-width:360px; padding:14px 18px; border:1px solid #d4dfeb; border-radius:10px;
+      background:#fffffff2; color:#18324a; box-shadow:0 5px 20px #18324a22;
+      font:14px Segoe UI,Arial,sans-serif; text-align:center; }
     @media (max-width:850px) {
       header { flex-wrap:wrap; padding:8px 12px; }
       .tools-bar { order:3; flex-basis:100%; justify-content:flex-start; overflow-x:auto; }
       .tool-button { padding:6px 8px; }
       .tool-button span { display:none; }
       main { grid-template-columns:230px 1fr; }
-      #chartOverlay { left:8px; right:8px; top:8px; bottom:8px; }
+      #chartOverlay { width:calc(100% - 16px); height:calc(100% - 16px); }
     }
   </style>
 </head>
 <body>
   <header>
     <div class="brand">
-      <img src="/static/hydro-regime.svg" alt="">
-      <span class="brand-title">ГидроРежим</span>
+      <img src="/static/hydrogis.svg" alt="">
+      <span class="brand-title" title="ГИС гидрологических данных">HydroGIS</span>
     </div>
     <nav class="tools-bar" aria-label="Инструменты">
       <button class="tool-button" id="graphsButton" title="Открыть галерею графиков">
@@ -98,20 +145,8 @@
       <button class="tool-button" id="summaryButton" title="Сводные показатели">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V5M4 19H21M8 15v-3m5 3V8m5 7V5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Показатели</span>
       </button>
-      <select class="tool-select" id="compareParameter" title="Параметр сравнения">
-        <option value="discharge">Расход, м³/с</option>
-        <option value="level_upper">Верхний бьеф, м</option>
-        <option value="level_lower">Нижний бьеф, м</option>
-        <option value="level">Уровень, м</option>
-      </select>
-      <button class="tool-button" id="compareButton" title="Сравнить выбранные объекты">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 18V8m5 10V5m6 13v-7m5 7V3M2 18h20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Сравнить</span>
-      </button>
-      <button class="tool-button" id="annualButton" title="Межгодовая динамика">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V5M4 19H21M7 15l4-5 3 2 5-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 5h3v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>По годам</span>
-      </button>
-      <button class="tool-button" id="exportButton" title="Экспорт таблицы CSV">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Экспорт CSV</span>
+      <button class="tool-button" id="compareOpenButton" title="Выбрать объекты для сравнения и экспорта">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 18V8m5 10V5m6 13v-7m5 7V3M2 18h20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Сравнить объекты</span>
       </button>
       {% if is_admin %}
       <a class="tool-button" href="/admin/audit" title="Журнал действий">
@@ -131,10 +166,8 @@
       </select>
       <label>Поиск объекта</label>
       <input id="search" placeholder="Название">
-      <label>С даты</label><input id="dateFrom" type="date">
-      <label>По дату</label><input id="dateTo" type="date">
       <h3>Объекты</h3>
-      <small>Отметьте несколько объектов для сравнения и межгодового анализа.</small>
+      <small>Выберите объект для просмотра или отметьте несколько в меню «Сравнить объекты».</small>
       <div id="stations">
         {% for group_name, group_stations in station_groups.items() %}
         <section class="station-group">
@@ -142,8 +175,6 @@
           {% for s in group_stations %}
           <div class="station" data-id="{{ s.station_id }}" data-river="{{ s.river }}"
                data-name="{{ s.display_name }}" data-type="{{ s.object_type }}">
-            <input class="station-check" type="checkbox" value="{{ s.station_id }}"
-                   aria-label="Добавить {{ s.display_name }} в выборку">
             {{ s.display_name }}
           </div>
           {% endfor %}
@@ -166,18 +197,111 @@
           </div>
         </div>
         <iframe id="chartOverlayFrame" src="about:blank"></iframe>
+        <div class="date-range">
+          <div class="date-range-head">
+            <span>Период графика</span>
+            <strong><span id="rangeStartLabel"></span> — <span id="rangeEndLabel"></span></strong>
+          </div>
+          <div class="range-controls">
+            <input id="rangeStart" type="range" min="0" max="{{ range_days }}" value="0" aria-label="Начало периода">
+            <input id="rangeEnd" type="range" min="0" max="{{ range_days }}" value="{{ range_days }}" aria-label="Конец периода">
+          </div>
+          <input id="dateFrom" type="hidden">
+          <input id="dateTo" type="hidden">
+        </div>
       </div>
     </section>
   </main>
+  <div id="compareDialog" role="dialog" aria-modal="true" aria-labelledby="compareTitle">
+    <div class="compare-panel">
+      <div class="compare-heading">
+        <h2 id="compareTitle">Сравнение объектов</h2>
+        <button id="compareClose" type="button" aria-label="Закрыть">Закрыть</button>
+      </div>
+      <label for="compareParameter">Показатель</label>
+      <select id="compareParameter">
+        <option value="discharge">Расход воды, м³/с</option>
+        <option value="level_upper">Уровень верхнего бьефа, м</option>
+        <option value="level_lower">Уровень нижнего бьефа, м</option>
+        <option value="level">Уровень воды, м</option>
+      </select>
+      <label for="compareSearch">Найти гидроузел или гидропост</label>
+      <input id="compareSearch" type="search" placeholder="Начните вводить название">
+      <div id="compareStationList">
+        {% for s in stations %}
+        <label class="compare-station" data-name="{{ s.display_name|lower }}" data-river="{{ s.river|lower }}">
+          <input class="compare-check" type="checkbox" value="{{ s.station_id }}">
+          <span>{{ s.display_name }} · {{ s.river }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="compare-actions">
+        <span id="compareCount">Выбрано: 0</span>
+        <button id="exportButton" type="button">Скачать таблицу CSV</button>
+        <button id="annualButton" type="button">По годам</button>
+        <button class="primary" id="compareButton" type="button">Построить сравнение</button>
+      </div>
+    </div>
+  </div>
   <script>
     let selected = null;
+    let chartUpdateTimer = null;
     const stations = document.querySelectorAll(".station");
+    const compareChecks = document.querySelectorAll(".compare-check");
+    const dateMin = new Date("{{ date_min }}T00:00:00Z");
+    const dayMilliseconds = 24 * 60 * 60 * 1000;
     const thumbParameters = [
       ["discharge", "Расход воды"],
       ["level_upper", "Уровень верхнего бьефа"],
       ["level_lower", "Уровень нижнего бьефа"],
       ["level", "Уровень воды на гидропосту"]
     ];
+    function dateAt(offset) {
+      return new Date(dateMin.getTime() + Number(offset) * dayMilliseconds)
+        .toISOString().slice(0, 10);
+    }
+    function formatDate(value) {
+      return new Date(value + "T12:00:00").toLocaleDateString("ru-RU");
+    }
+    function updateDateRange(changed) {
+      const start = document.getElementById("rangeStart");
+      const end = document.getElementById("rangeEnd");
+      if (Number(start.value) > Number(end.value)) {
+        if (changed === start) end.value = start.value;
+        else start.value = end.value;
+      }
+      const from = dateAt(start.value);
+      const to = dateAt(end.value);
+      const max = Number(start.max);
+      const controls = document.querySelector(".range-controls");
+      controls.style.setProperty("--range-from", max ? (100 * start.value / max) + "%" : "0%");
+      controls.style.setProperty("--range-to", max ? (100 * end.value / max) + "%" : "100%");
+      document.getElementById("dateFrom").value = from;
+      document.getElementById("dateTo").value = to;
+      document.getElementById("rangeStartLabel").textContent = formatDate(from);
+      document.getElementById("rangeEndLabel").textContent = formatDate(to);
+      clearTimeout(chartUpdateTimer);
+      chartUpdateTimer = setTimeout(function() {
+        if (document.getElementById("graphDrawer").classList.contains("open")) {
+          updateGraphMenu();
+        }
+        refreshVisibleChart();
+      }, 250);
+    }
+    function refreshVisibleChart() {
+      const frame = document.getElementById("chartOverlayFrame");
+      if (!frame.src || frame.src.endsWith("about:blank")) return;
+      const url = new URL(frame.src);
+      if (!["/plot", "/compare", "/summary"].includes(url.pathname)) return;
+      url.searchParams.set("from", document.getElementById("dateFrom").value);
+      url.searchParams.set("to", document.getElementById("dateTo").value);
+      frame.src = url.pathname + url.search;
+      const download = document.getElementById("chartDownload");
+      if (!download.hidden) {
+        url.searchParams.set("download", "1");
+        download.href = url.pathname + url.search;
+      }
+    }
     function chartParams(parameter) {
       return new URLSearchParams({
         station: selected,
@@ -226,9 +350,26 @@
       download.hidden = !downloadUrl;
       if (downloadUrl) download.href = downloadUrl;
       const overlay = document.getElementById("chartOverlay");
-      overlay.classList.toggle("with-drawer", document.getElementById("graphDrawer").classList.contains("open"));
       overlay.classList.add("open");
     }
+    document.getElementById("chartOverlayFrame").addEventListener("load", function() {
+      const doc = this.contentDocument;
+      const image = doc && doc.querySelector("img");
+      if (!image) return;
+      doc.documentElement.style.height = "100%";
+      doc.body.style.cssText =
+        "height:100%;margin:0;display:grid;place-items:center;overflow:hidden";
+      image.style.maxWidth = "100%";
+      image.style.maxHeight = "100%";
+      image.style.objectFit = "contain";
+    });
+    document.getElementById("rangeStart").addEventListener("input", function() {
+      updateDateRange(this);
+    });
+    document.getElementById("rangeEnd").addEventListener("input", function() {
+      updateDateRange(this);
+    });
+    updateDateRange(null);
     document.getElementById("graphsButton").addEventListener("click", function() {
       if (!selected) {
         alert("Выберите объект из списка");
@@ -237,7 +378,6 @@
       const drawer = document.getElementById("graphDrawer");
       const opening = !drawer.classList.contains("open");
       drawer.classList.toggle("open", opening);
-      document.getElementById("chartOverlay").classList.toggle("with-drawer", opening);
       if (opening) updateGraphMenu();
     });
     document.getElementById("chartClose").addEventListener("click", function() {
@@ -254,9 +394,6 @@
         (selected ? "&station=" + encodeURIComponent(selected) : "");
     }
     stations.forEach(function(el) {
-      el.querySelector(".station-check").addEventListener("click", function(event) {
-        event.stopPropagation();
-      });
       el.addEventListener("click", function() {
         stations.forEach(s => s.classList.remove("active"));
         el.classList.add("active");
@@ -279,17 +416,37 @@
       );
       if (station) station.click();
     });
-    document.getElementById("dateFrom").addEventListener("change", updateGraphMenu);
-    document.getElementById("dateTo").addEventListener("change", updateGraphMenu);
     function selectedForAnalysis() {
-      const checked = Array.from(document.querySelectorAll(".station-check:checked"))
+      const checked = Array.from(document.querySelectorAll(".compare-check:checked"))
         .map(input => input.value);
       return checked.length ? checked : (selected ? [selected] : []);
     }
+    function updateCompareCount() {
+      document.getElementById("compareCount").textContent =
+        "Выбрано: " + document.querySelectorAll(".compare-check:checked").length;
+    }
+    compareChecks.forEach(input => input.addEventListener("change", updateCompareCount));
+    document.getElementById("compareOpenButton").addEventListener("click", function() {
+      document.getElementById("compareDialog").classList.add("open");
+      document.getElementById("compareSearch").focus();
+    });
+    function closeCompareDialog() {
+      document.getElementById("compareDialog").classList.remove("open");
+    }
+    document.getElementById("compareClose").addEventListener("click", closeCompareDialog);
+    document.getElementById("compareDialog").addEventListener("click", function(event) {
+      if (event.target === this) closeCompareDialog();
+    });
+    document.getElementById("compareSearch").addEventListener("input", function() {
+      const query = this.value.trim().toLocaleLowerCase("ru");
+      document.querySelectorAll(".compare-station").forEach(function(item) {
+        item.hidden = !(`${item.dataset.name} ${item.dataset.river}`).includes(query);
+      });
+    });
     function comparisonUrl(mode) {
       const stationIds = selectedForAnalysis();
       if (stationIds.length < 2) {
-        alert("Для сравнения отметьте флажками не менее двух объектов");
+        alert("Выберите не менее двух объектов в списке сравнения");
         return null;
       }
       const params = new URLSearchParams({
@@ -303,11 +460,17 @@
     }
     document.getElementById("compareButton").addEventListener("click", function() {
       const url = comparisonUrl("timeseries");
-      if (url) openChart("Сравнение станций", url, url + "&download=1");
+      if (url) {
+        closeCompareDialog();
+        openChart("Сравнение объектов", url, url + "&download=1");
+      }
     });
     document.getElementById("annualButton").addEventListener("click", function() {
       const url = comparisonUrl("annual");
-      if (url) openChart("Межгодовая динамика", url, url + "&download=1");
+      if (url) {
+        closeCompareDialog();
+        openChart("Межгодовая динамика", url, url + "&download=1");
+      }
     });
     document.getElementById("summaryButton").addEventListener("click", function() {
       if (!selected) { alert("Выберите объект из списка или на карте"); return; }
@@ -316,7 +479,7 @@
     });
     document.getElementById("exportButton").addEventListener("click", function() {
       const ids = selectedForAnalysis();
-      if (!ids.length) { alert("Выберите объект из списка или отметьте объекты флажками"); return; }
+      if (!ids.length) { alert("Выберите объект в списке сравнения"); return; }
       const params = new URLSearchParams({
         parameter: document.getElementById("compareParameter").value,
         from: document.getElementById("dateFrom").value,
@@ -324,6 +487,9 @@
       });
       ids.forEach(id => params.append("station", id));
       window.location.href = "/export/table?" + params.toString();
+    });
+    document.addEventListener("keydown", function(event) {
+      if (event.key === "Escape") closeCompareDialog();
     });
   </script>
 </body>
