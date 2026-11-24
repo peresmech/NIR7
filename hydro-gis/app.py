@@ -763,6 +763,8 @@ def export_table():
 def compare():
     station_ids = request.args.get("stations", "").split(",")
     station_ids = list(dict.fromkeys(item for item in station_ids if item))
+    if len(station_ids) < 2:
+        return "Для сравнения выберите не менее двух объектов", 400
     parameter = request.args.get("parameter", "discharge")
     mode = request.args.get("mode", "timeseries")
     date_from = request.args.get("from", "")

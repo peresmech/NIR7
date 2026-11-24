@@ -125,6 +125,8 @@
     .compare-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap;
       gap:8px; margin-top:12px; }
     #compareCount { margin-right:auto; color:#63788d; font-size:13px; }
+    #compareError { display:none; margin:9px 0 0; color:#a83232; font-size:13px; }
+    #compareError.visible { display:block; }
     .compare-actions .primary { border-color:#1769aa; color:white; background:#1769aa; }
     .map-error { position:absolute; z-index:500; left:50%; top:50%; transform:translate(-50%,-50%);
       max-width:360px; padding:14px 18px; border:1px solid #d4dfeb; border-radius:10px;
@@ -253,6 +255,7 @@
         </label>
         {% endfor %}
       </div>
+      <p id="compareError" role="alert"></p>
       <div class="compare-actions">
         <span id="compareCount">Выбрано: 0</span>
         <button id="exportButton" type="button">Скачать таблицу CSV</button>
@@ -463,16 +466,23 @@
       if (station) station.click();
     });
     function selectedForAnalysis() {
-      const checked = Array.from(document.querySelectorAll(".compare-check:checked"))
+      return Array.from(document.querySelectorAll(".compare-check:checked"))
         .map(input => input.value);
-      return checked.length ? checked : (selected ? [selected] : []);
     }
     function updateCompareCount() {
-      document.getElementById("compareCount").textContent =
-        "Выбрано: " + document.querySelectorAll(".compare-check:checked").length;
+      const count = selectedForAnalysis().length;
+      document.getElementById("compareCount").textContent = "Выбрано: " + count;
+      const error = document.getElementById("compareError");
+      error.textContent = "";
+      error.classList.remove("visible");
     }
     compareChecks.forEach(input => input.addEventListener("change", updateCompareCount));
     document.getElementById("compareOpenButton").addEventListener("click", function() {
+      if (!selectedForAnalysis().length && selected) {
+        const activeChoice = Array.from(compareChecks).find(input => input.value === selected);
+        if (activeChoice) activeChoice.checked = true;
+      }
+      updateCompareCount();
       document.getElementById("compareDialog").classList.add("open");
       document.getElementById("compareSearch").focus();
     });
@@ -492,7 +502,9 @@
     function comparisonUrl(mode) {
       const stationIds = selectedForAnalysis();
       if (stationIds.length < 2) {
-        alert("Выберите не менее двух объектов в списке сравнения");
+        const error = document.getElementById("compareError");
+        error.textContent = "Для сравнения отметьте не менее двух объектов.";
+        error.classList.add("visible");
         return null;
       }
       const params = new URLSearchParams({
