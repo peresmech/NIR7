@@ -48,6 +48,7 @@ BACKUP_DIR = DATA_DIR / "backups"
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 ICON_PATH = RESOURCES_DIR / "hydrogis.ico"
 NETWORK_PATH = RESOURCES_DIR / "network_edges.geojson"
+WATER_PATH = RESOURCES_DIR / "waterbodies.geojson"
 
 SECRET_FILE = DATA_DIR / ".secret"
 if not SECRET_FILE.exists():
@@ -445,7 +446,7 @@ def map_page():
 @login_required
 def map_data():
     if not NETWORK_PATH.is_file():
-        return {"type": "FeatureCollection", "features": []}
+        return {"error": f"Не найден файл локальной речной сети: {NETWORK_PATH.name}"}, 503
     with NETWORK_PATH.open(encoding="utf-8") as file:
         collection = json.load(file)
     collection = clip_network_to_study_area(collection)
@@ -459,6 +460,15 @@ def map_data():
             or feature.get("properties", {}).get("parent") == river_name
         ]
     return collection
+
+
+@app.route("/map/water")
+@login_required
+def map_water():
+    if not WATER_PATH.is_file() or request.args.get("overview") == "kama":
+        return {"type": "FeatureCollection", "features": []}
+    with WATER_PATH.open(encoding="utf-8") as file:
+        return json.load(file)
 
 
 def clip_network_to_study_area(collection):
@@ -1234,8 +1244,12 @@ if __name__ == "__main__":
     try:
         import threading
         from PyQt5.QtCore import QUrl
-        from PyQt5.QtWidgets import QApplication
-        from PyQt5.QtWebEngineWidgets import QWebEngineView
+        from PyQt5.QtWidgets import QApplication, QFileDialog, QMessageBox
+        from PyQt5.QtWebEngineWidgets import (
+            QWebEngineDownloadItem,
+            QWebEnginePage,
+            QWebEngineView,
+        )
         from logging.handlers import RotatingFileHandler
         from werkzeug.serving import WSGIRequestHandler, make_server
     except ImportError as exc:
@@ -1277,6 +1291,58 @@ if __name__ == "__main__":
     if ICON_PATH.is_file():
         from PyQt5.QtGui import QIcon
         window.setWindowIcon(QIcon(str(ICON_PATH)))
+
+    class HydroPage(QWebEnginePage):
+        def javaScriptConsoleMessage(self, level, message, line_number, source_id):
+            app.logger.error(
+                "WebEngine JavaScript (%s:%s): %s",
+                source_id,
+                line_number,
+                message,
+            )
+
+    page = HydroPage(window)
+    window.setPage(page)
+
+    def save_download(download):
+        filename = Path(download.downloadFileName()).name or "hydrogis-export"
+        export_dir = DATA_DIR / "exports"
+        export_dir.mkdir(parents=True, exist_ok=True)
+        default_path = export_dir / filename
+        file_path, selected_filter = QFileDialog.getSaveFileName(
+            window,
+            "Сохранить файл",
+            str(default_path),
+            "Изображение PNG (*.png);;Таблица CSV (*.csv);;Все файлы (*)",
+        )
+        if not file_path:
+            download.cancel()
+            return
+
+        target = Path(file_path)
+        if not target.suffix:
+            extension = ".csv" if "CSV" in selected_filter else ".png"
+            target = target.with_suffix(extension)
+        download.setPath(str(target))
+
+        def report_download_finished():
+            if download.state() == QWebEngineDownloadItem.DownloadCompleted:
+                QMessageBox.information(
+                    window,
+                    "Файл сохранён",
+                    f"Файл сохранён:\n{target}",
+                )
+            elif download.state() == QWebEngineDownloadItem.DownloadInterrupted:
+                QMessageBox.warning(
+                    window,
+                    "Ошибка сохранения",
+                    f"Не удалось сохранить файл:\n{target}",
+                )
+
+        download.finished.connect(report_download_finished)
+        download.accept()
+
+    page.profile().downloadRequested.connect(save_download)
 
     def show_load_error(ok):
         if not ok:

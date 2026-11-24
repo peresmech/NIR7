@@ -72,11 +72,18 @@
       cursor:pointer; font-size:13px;
     }
     #chartOverlayFrame { flex:1; min-height:300px; width:100%; border:0; background:white; }
-    .date-range { padding:9px 18px 12px; background:#f6f9fc; border-top:1px solid #e0e8f0; }
+    .date-range { padding:12px 18px 13px; background:#edf2f7;
+      border-top:4px solid #cad7e4; box-shadow:inset 0 1px #fff; }
     .date-range-head { display:flex; justify-content:space-between; align-items:center;
-      margin-bottom:5px; color:#4e6276; font-size:12px; }
-    .date-range-head strong { color:#18324a; font-size:13px; font-weight:600; }
-    .range-controls { position:relative; height:26px;
+      margin-bottom:9px; color:#304c66; font-size:13px; font-weight:650; }
+    .date-date-fields { display:grid; grid-template-columns:repeat(2,minmax(210px,250px));
+      gap:10px; }
+    .date-date-field { display:flex; align-items:center; gap:8px; color:#536b80; font-size:12px; }
+    .date-date-field span { white-space:nowrap; }
+    .date-date-field input { min-width:0; width:100%; padding:6px 8px;
+      border:1px solid #c5d3e1; border-radius:6px; background:white;
+      color:#18324a; font:13px Segoe UI,Arial,sans-serif; }
+    .range-controls { position:relative; height:26px; margin-top:5px;
       --range-from:0%; --range-to:100%; }
     .range-controls::before { content:""; position:absolute; z-index:0; left:8px; right:8px;
       top:11px; height:4px; border-radius:4px;
@@ -94,7 +101,8 @@
     .range-controls input[type=range]::-moz-range-thumb { width:13px; height:13px;
       border:2px solid white; border-radius:50%; background:#1769aa;
       box-shadow:0 1px 4px #18324a55; pointer-events:auto; cursor:ew-resize; }
-    #dateFrom,#dateTo { display:none; }
+    #dateError { display:none; margin:4px 0 0; color:#a83232; font-size:12px; }
+    #dateError.visible { display:block; }
     #compareDialog { position:fixed; z-index:80; inset:0; display:none; align-items:center;
       justify-content:center; padding:20px; background:#10283db3; }
     #compareDialog.open { display:flex; }
@@ -129,6 +137,7 @@
       .tool-button span { display:none; }
       main { grid-template-columns:230px 1fr; }
       #chartOverlay { width:calc(100% - 16px); height:calc(100% - 16px); }
+      .date-date-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
     }
   </style>
 </head>
@@ -167,7 +176,7 @@
       <label>Поиск объекта</label>
       <input id="search" placeholder="Название">
       <h3>Объекты</h3>
-      <small>Выберите объект для просмотра или отметьте несколько в меню «Сравнить объекты».</small>
+      <small>Выберите объект для просмотра. Для сравнения нажмите «Сравнить объекты».</small>
       <div id="stations">
         {% for group_name, group_stations in station_groups.items() %}
         <section class="station-group">
@@ -192,22 +201,31 @@
         <div class="overlay-bar">
           <strong id="chartTitle">График</strong>
           <div class="overlay-actions">
-            <a id="chartDownload" href="#" download>Скачать PNG</a>
+            <a id="chartDownload" href="#" download>Сохранить PNG…</a>
             <button id="chartClose" type="button">Закрыть</button>
           </div>
         </div>
         <iframe id="chartOverlayFrame" src="about:blank"></iframe>
         <div class="date-range">
           <div class="date-range-head">
-            <span>Период графика</span>
-            <strong><span id="rangeStartLabel"></span> — <span id="rangeEndLabel"></span></strong>
+            <span>Период отображения графика</span>
+            <span id="rangeLabel"></span>
+          </div>
+          <div class="date-date-fields">
+            <label class="date-date-field" for="dateFrom">
+              <span>С даты</span>
+              <input id="dateFrom" type="date" min="{{ date_min }}" max="{{ date_max }}" value="{{ date_min }}">
+            </label>
+            <label class="date-date-field" for="dateTo">
+              <span>По дату</span>
+              <input id="dateTo" type="date" min="{{ date_min }}" max="{{ date_max }}" value="{{ date_max }}">
+            </label>
           </div>
           <div class="range-controls">
             <input id="rangeStart" type="range" min="0" max="{{ range_days }}" value="0" aria-label="Начало периода">
             <input id="rangeEnd" type="range" min="0" max="{{ range_days }}" value="{{ range_days }}" aria-label="Конец периода">
           </div>
-          <input id="dateFrom" type="hidden">
-          <input id="dateTo" type="hidden">
+          <p id="dateError" role="alert"></p>
         </div>
       </div>
     </section>
@@ -263,6 +281,20 @@
     function formatDate(value) {
       return new Date(value + "T12:00:00").toLocaleDateString("ru-RU");
     }
+    function showDateError(message) {
+      const error = document.getElementById("dateError");
+      error.textContent = message;
+      error.classList.toggle("visible", Boolean(message));
+    }
+    function scheduleChartRefresh() {
+      clearTimeout(chartUpdateTimer);
+      chartUpdateTimer = setTimeout(function() {
+        if (document.getElementById("graphDrawer").classList.contains("open")) {
+          updateGraphMenu();
+        }
+        refreshVisibleChart();
+      }, 250);
+    }
     function updateDateRange(changed) {
       const start = document.getElementById("rangeStart");
       const end = document.getElementById("rangeEnd");
@@ -272,21 +304,33 @@
       }
       const from = dateAt(start.value);
       const to = dateAt(end.value);
+      document.getElementById("dateFrom").value = from;
+      document.getElementById("dateTo").value = to;
       const max = Number(start.max);
       const controls = document.querySelector(".range-controls");
       controls.style.setProperty("--range-from", max ? (100 * start.value / max) + "%" : "0%");
       controls.style.setProperty("--range-to", max ? (100 * end.value / max) + "%" : "100%");
-      document.getElementById("dateFrom").value = from;
-      document.getElementById("dateTo").value = to;
-      document.getElementById("rangeStartLabel").textContent = formatDate(from);
-      document.getElementById("rangeEndLabel").textContent = formatDate(to);
-      clearTimeout(chartUpdateTimer);
-      chartUpdateTimer = setTimeout(function() {
-        if (document.getElementById("graphDrawer").classList.contains("open")) {
-          updateGraphMenu();
-        }
-        refreshVisibleChart();
-      }, 250);
+      document.getElementById("rangeLabel").textContent =
+        formatDate(from) + " — " + formatDate(to);
+      showDateError("");
+      scheduleChartRefresh();
+    }
+    function updateDateFields() {
+      const from = document.getElementById("dateFrom").value;
+      const to = document.getElementById("dateTo").value;
+      if (!from || !to) {
+        showDateError("Укажите обе даты периода.");
+        return;
+      }
+      if (from > to) {
+        showDateError("Начало периода не может быть позже его окончания.");
+        return;
+      }
+      const fromDays = Math.round((new Date(from + "T00:00:00Z") - dateMin) / dayMilliseconds);
+      const toDays = Math.round((new Date(to + "T00:00:00Z") - dateMin) / dayMilliseconds);
+      document.getElementById("rangeStart").value = fromDays;
+      document.getElementById("rangeEnd").value = toDays;
+      updateDateRange(null);
     }
     function refreshVisibleChart() {
       const frame = document.getElementById("chartOverlayFrame");
@@ -369,6 +413,8 @@
     document.getElementById("rangeEnd").addEventListener("input", function() {
       updateDateRange(this);
     });
+    document.getElementById("dateFrom").addEventListener("change", updateDateFields);
+    document.getElementById("dateTo").addEventListener("change", updateDateFields);
     updateDateRange(null);
     document.getElementById("graphsButton").addEventListener("click", function() {
       if (!selected) {
