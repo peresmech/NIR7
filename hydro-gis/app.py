@@ -1304,6 +1304,9 @@ if __name__ == "__main__":
             )
 
     page = HydroPage(window)
+    page.profile().setHttpUserAgent(
+        page.profile().httpUserAgent() + " HydroGIS/1.0"
+    )
     window.setPage(page)
 
     def save_download(download):
