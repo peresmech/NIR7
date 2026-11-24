@@ -3,7 +3,10 @@ import hmac
 import io
 import json
 import logging
+import math
 import os
+import csv
+import re
 import secrets
 import shutil
 import sqlite3
@@ -23,7 +26,6 @@ from flask import (
     session,
     url_for,
 )
-from werkzeug.utils import secure_filename
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -71,6 +73,76 @@ def connect_db():
     con.execute("PRAGMA foreign_keys = ON")
     con.execute("PRAGMA busy_timeout = 5000")
     return con
+
+
+def migrate_observations(con):
+    schema = con.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='observations'"
+    ).fetchone()
+    columns = {row["name"] for row in con.execute("PRAGMA table_info(observations)")}
+    if schema and "series_type" in columns and "REFERENCES stations" in schema["sql"]:
+        return
+
+    for row in con.execute("SELECT DISTINCT parameter FROM observations"):
+        con.execute(
+            "INSERT OR IGNORE INTO parameters(code,label,unit) VALUES(?,?,?)",
+            (row["parameter"], row["parameter"], ""),
+        )
+
+    unknown_station = con.execute(
+        """
+        SELECT DISTINCT o.station FROM observations o
+        LEFT JOIN stations s ON s.station_id=o.station
+        WHERE s.station_id IS NULL LIMIT 1
+        """
+    ).fetchone()
+    if unknown_station:
+        raise RuntimeError(
+            f"В наблюдениях найден неизвестный объект: {unknown_station['station']}"
+        )
+
+    con.execute("DROP INDEX IF EXISTS observations_unique")
+    con.execute("DROP TABLE IF EXISTS observations_new")
+    con.execute(
+        """
+        CREATE TABLE observations_new (
+            station TEXT NOT NULL REFERENCES stations(station_id),
+            parameter TEXT NOT NULL REFERENCES parameters(code),
+            date TEXT NOT NULL,
+            value REAL NOT NULL,
+            quality_flag TEXT NOT NULL DEFAULT 'unreviewed'
+                CHECK(quality_flag IN ('unreviewed','checked','suspect')),
+            quality_note TEXT,
+            series_type TEXT NOT NULL DEFAULT 'observed'
+                CHECK(series_type IN ('observed','forecast')),
+            PRIMARY KEY(station,parameter,date,series_type)
+        )
+        """
+    )
+    series_expression = (
+        "COALESCE(series_type,'observed')" if "series_type" in columns else "'observed'"
+    )
+    con.execute(
+        f"""
+        INSERT INTO observations_new(
+            station,parameter,date,value,quality_flag,quality_note,series_type
+        )
+        SELECT o.station,o.parameter,substr(o.date,1,10),o.value,
+               CASE WHEN o.quality_flag IN ('unreviewed','checked','suspect')
+                    THEN o.quality_flag ELSE 'unreviewed' END,
+               o.quality_note,{series_expression}
+        FROM observations o
+        JOIN stations s ON s.station_id=o.station
+        JOIN parameters p ON p.code=o.parameter
+        WHERE o.value IS NOT NULL AND o.date IS NOT NULL
+        GROUP BY o.station,o.parameter,substr(o.date,1,10),{series_expression}
+        """
+    )
+    con.execute("DROP TABLE observations")
+    con.execute("ALTER TABLE observations_new RENAME TO observations")
+    con.execute(
+        "CREATE INDEX observations_parameter_date ON observations(parameter,date)"
+    )
 
 
 def password_hash(password):
@@ -172,22 +244,6 @@ def init_database():
             ("level", "Уровень воды на гидропосту", "м"),
         ],
     )
-    con.execute("UPDATE observations SET date=substr(date,1,10)")
-    con.execute(
-        """
-        DELETE FROM observations
-        WHERE rowid NOT IN (
-            SELECT MAX(rowid)
-            FROM observations
-            GROUP BY station, parameter, date
-        )
-        """
-    )
-    con.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS observations_unique "
-        "ON observations(station, parameter, date)"
-    )
-
     stations_csv = RESOURCES_DIR / "stations.csv"
     if not stations_csv.exists():
         stations_csv = PROJECT_DIR.parent / "first" / "data" / "stations.csv"
@@ -247,6 +303,46 @@ def init_database():
                     int(getattr(row, "sort_order")),
                 ),
             )
+
+    con.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS stations_station_id_unique "
+        "ON stations(station_id)"
+    )
+    con.executemany(
+        "INSERT OR IGNORE INTO parameters(code,label,unit) VALUES(?,?,?)",
+        [
+            ("level_relative", "Относительный уровень воды", "см"),
+            ("level_upper_relative", "Относительный уровень верхнего бьефа", "см"),
+            ("level_lower_relative", "Относительный уровень нижнего бьефа", "см"),
+        ],
+    )
+    migrate_observations(con)
+    con.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS import_batches (
+            id INTEGER PRIMARY KEY,
+            imported_at TEXT NOT NULL,
+            username TEXT NOT NULL REFERENCES users(username)
+        );
+        CREATE TABLE IF NOT EXISTS import_files (
+            id INTEGER PRIMARY KEY,
+            batch_id INTEGER NOT NULL REFERENCES import_batches(id),
+            filename TEXT NOT NULL,
+            station_id TEXT REFERENCES stations(station_id),
+            status TEXT NOT NULL CHECK(status IN ('imported','failed')),
+            message TEXT
+        );
+        CREATE TABLE IF NOT EXISTS import_series (
+            file_id INTEGER NOT NULL REFERENCES import_files(id) ON DELETE CASCADE,
+            parameter TEXT NOT NULL REFERENCES parameters(code),
+            series_type TEXT NOT NULL CHECK(series_type IN ('observed','forecast')),
+            rows_added INTEGER NOT NULL DEFAULT 0,
+            rows_replaced INTEGER NOT NULL DEFAULT 0,
+            rows_skipped INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY(file_id,parameter,series_type)
+        );
+        """
+    )
 
     admin = con.execute("SELECT id FROM users WHERE username='admin'").fetchone()
     if admin is None:
@@ -379,7 +475,8 @@ def index():
     }
     for station in stations:
         section = section_labels.get(station["river_section"], station["river_section"])
-        group_name = f"{station['river']} — {section}" if station["river"] else section
+        river = station["river"] or "Река не указана"
+        group_name = f"{river} — {section}"
         station_groups.setdefault(group_name, []).append(station)
     return render_template(
         "index.html",
@@ -422,9 +519,11 @@ def map_page():
             "tp": row["tp"] or "",
         }
         for row in rows
-        if (overview == "all")
+        if row["lat"] is not None
+        and row["lon"] is not None
+        and ((overview == "all")
         or (overview == "volga" and row["river"] == "Волга")
-        or (overview == "kama" and row["river"] == "Кама")
+        or (overview == "kama" and row["river"] == "Кама"))
     ]
     if visible_rows:
         center = [
@@ -518,8 +617,11 @@ def clip_network_to_study_area(collection):
 def plot():
     station_id = request.args.get("station", "")
     parameter = request.args.get("parameter", "discharge")
+    series_type = request.args.get("series_type", "observed")
     date_from = request.args.get("from", "")
     date_to = request.args.get("to", "")
+    if series_type not in ("observed", "forecast"):
+        return "Неизвестный тип ряда", 400
 
     con = connect_db()
     station = con.execute(
@@ -530,9 +632,9 @@ def plot():
     ).fetchone()
     query = (
         "SELECT date,value,quality_flag FROM observations "
-        "WHERE station=? AND parameter=? "
+        "WHERE station=? AND parameter=? AND series_type=? "
     )
-    params = [station_id, parameter]
+    params = [station_id, parameter, series_type]
     if date_from:
         query += "AND date>=? "
         params.append(date_from)
@@ -610,7 +712,7 @@ def plot():
     return send_file(output, mimetype="image/png")
 
 
-def observation_filters(stations, parameter, date_from, date_to):
+def observation_filters(stations, parameter, date_from, date_to, series_type="observed"):
     if not stations:
         raise ValueError("Выберите хотя бы один объект")
     if len(stations) > 30:
@@ -629,6 +731,9 @@ def observation_filters(stations, parameter, date_from, date_to):
     if not con.execute("SELECT 1 FROM parameters WHERE code=?", (parameter,)).fetchone():
         con.close()
         raise ValueError("Неизвестный гидрологический параметр")
+    if series_type not in ("observed", "forecast"):
+        con.close()
+        raise ValueError("Неизвестный тип ряда")
     return con
 
 
@@ -637,8 +742,11 @@ def observation_filters(stations, parameter, date_from, date_to):
 def summary():
     station_id = request.args.get("station", "")
     parameter = request.args.get("parameter", "discharge")
+    series_type = request.args.get("series_type", "observed")
     date_from = request.args.get("from", "")
     date_to = request.args.get("to", "")
+    if series_type not in ("observed", "forecast"):
+        return "Неизвестный тип ряда", 400
     con = connect_db()
     station = con.execute(
         "SELECT display_name,source_istok,tp,source_name,source_type,source_note "
@@ -653,9 +761,9 @@ def summary():
         return "Неизвестный объект или параметр", 404
     sql = (
         "SELECT date,value,quality_flag,quality_note FROM observations "
-        "WHERE station=? AND parameter=?"
+        "WHERE station=? AND parameter=? AND series_type=?"
     )
-    args = [station_id, parameter]
+    args = [station_id, parameter, series_type]
     if date_from:
         sql += " AND date>=?"
         args.append(date_from)
@@ -708,6 +816,7 @@ def summary():
         "summary.html",
         station=station,
         meta=meta,
+        series_type=series_type,
         stats=stats,
         annual_rows=annual_rows,
         date_from=date_from,
@@ -723,20 +832,22 @@ def export_table():
         station_ids = request.args.get("stations", "").split(",")
     station_ids = list(dict.fromkeys(item for item in station_ids if item))
     parameter = request.args.get("parameter", "discharge")
+    series_type = request.args.get("series_type", "observed")
     date_from = request.args.get("from", "")
     date_to = request.args.get("to", "")
     try:
-        con = observation_filters(station_ids, parameter, date_from, date_to)
+        con = observation_filters(station_ids, parameter, date_from, date_to, series_type)
     except ValueError as exc:
         return str(exc), 400
     query = (
         "SELECT s.display_name,s.river,s.source_istok,s.tp,p.label AS parameter_label,"
-        "p.unit,o.date,o.value,o.quality_flag,o.quality_note "
+        "p.unit,o.date,o.value,o.series_type,o.quality_flag,o.quality_note "
         "FROM observations o JOIN stations s ON s.station_id=o.station "
         "JOIN parameters p ON p.code=o.parameter "
-        f"WHERE o.station IN ({','.join('?' for _ in station_ids)}) AND o.parameter=?"
+        f"WHERE o.station IN ({','.join('?' for _ in station_ids)}) "
+        "AND o.parameter=? AND o.series_type=?"
     )
-    args = [*station_ids, parameter]
+    args = [*station_ids, parameter, series_type]
     if date_from:
         query += " AND o.date>=?"
         args.append(date_from)
@@ -754,7 +865,7 @@ def export_table():
         data,
         mimetype="text/csv; charset=utf-8",
         as_attachment=True,
-        download_name=f"hydro_{suffix}_{parameter}.csv",
+        download_name=f"hydro_{suffix}_{parameter}_{series_type}.csv",
     )
 
 
@@ -766,19 +877,21 @@ def compare():
     if len(station_ids) < 2:
         return "Для сравнения выберите не менее двух объектов", 400
     parameter = request.args.get("parameter", "discharge")
+    series_type = request.args.get("series_type", "observed")
     mode = request.args.get("mode", "timeseries")
     date_from = request.args.get("from", "")
     date_to = request.args.get("to", "")
     try:
-        con = observation_filters(station_ids, parameter, date_from, date_to)
+        con = observation_filters(station_ids, parameter, date_from, date_to, series_type)
     except ValueError as exc:
         return str(exc), 400
     sql = (
         "SELECT o.station,s.display_name,o.date,o.value "
         "FROM observations o JOIN stations s ON s.station_id=o.station "
-        f"WHERE o.station IN ({','.join('?' for _ in station_ids)}) AND o.parameter=?"
+        f"WHERE o.station IN ({','.join('?' for _ in station_ids)}) "
+        "AND o.parameter=? AND o.series_type=?"
     )
-    args = [*station_ids, parameter]
+    args = [*station_ids, parameter, series_type]
     if date_from:
         sql += " AND o.date>=?"
         args.append(date_from)
@@ -794,8 +907,13 @@ def compare():
     if not frame.empty:
         frame["date"] = pd.to_datetime(frame["date"])
     fig, ax = plt.subplots(figsize=(8.8, 4), dpi=100)
-    if frame.empty:
-        ax.text(0.5, 0.5, "Нет данных для сравнения", ha="center", va="center")
+    if frame.empty or frame["station"].nunique() < 2:
+        message = (
+            "Нет данных для выбранного периода"
+            if frame.empty
+            else "Есть данные только по одному объекту"
+        )
+        ax.text(0.5, 0.5, message, ha="center", va="center")
     elif mode == "annual":
         frame["year"] = frame["date"].dt.year
         annual = frame.groupby(["station", "display_name", "year"], as_index=False)["value"].mean()
@@ -803,7 +921,8 @@ def compare():
             name = group["display_name"].iloc[0]
             ax.plot(group["year"], group["value"], marker="o", linewidth=1.8, label=name)
         ax.set_xlabel("Год")
-        ax.set_title(f"Межгодовая динамика: {meta['label']}")
+        title = "прогнозных рядов" if series_type == "forecast" else "наблюдений"
+        ax.set_title(f"Межгодовая динамика {title}: {meta['label']}")
     else:
         for _, group in frame.groupby("station"):
             name = group["display_name"].iloc[0]
@@ -811,10 +930,11 @@ def compare():
         ax.xaxis.set_major_formatter(DateFormatter("%Y"))
         ax.tick_params(axis="x", rotation=30)
         ax.set_xlabel("Дата")
-        ax.set_title(f"Сравнение гидрологических рядов: {meta['label']}")
+        title = "прогнозных рядов" if series_type == "forecast" else "наблюдений"
+        ax.set_title(f"Сравнение {title}: {meta['label']}")
     ax.set_ylabel(f"{meta['label']} ({meta['unit']})")
     ax.grid(True, color="#dde5ef")
-    if not frame.empty:
+    if not frame.empty and frame["station"].nunique() > 1:
         ax.legend(loc="best", fontsize=8)
     fig.tight_layout()
     output = io.BytesIO()
@@ -822,6 +942,8 @@ def compare():
     plt.close(fig)
     output.seek(0)
     filename = "hydro_annual_comparison.png" if mode == "annual" else "hydro_comparison.png"
+    if series_type == "forecast":
+        filename = filename.replace(".png", "_forecast.png")
     if request.args.get("download") == "1":
         return send_file(output, mimetype="image/png", as_attachment=True, download_name=filename)
     return send_file(output, mimetype="image/png")
@@ -877,7 +999,8 @@ def update_quality():
         """
         UPDATE observations
         SET quality_flag=?,quality_note=?
-        WHERE station=? AND parameter=? AND date>=? AND date<=?
+        WHERE station=? AND parameter=? AND series_type='observed'
+          AND date>=? AND date<=?
         """,
         (quality_flag, note or None, station_id, parameter, date_from, date_to + " 23:59:59"),
     )
@@ -914,37 +1037,57 @@ def admin():
     message = None
     error = None
     if request.method == "POST":
-        station_id = request.form.get("station_id", "").strip()
-        parameter = request.form.get("parameter", "").strip()
-        quality_flag = request.form.get("quality_flag", "unreviewed").strip()
-        unit = request.form.get("unit", "").strip()
-        file = request.files.get("csv_file")
-        if (
-            not station_id
-            or parameter not in ("discharge", "level_upper", "level_lower", "level")
-            or quality_flag not in ("unreviewed", "checked", "suspect")
-        ):
-            error = "Выберите станцию и параметр"
-        elif file is None or file.filename == "":
-            error = "Выберите CSV-файл"
+        files = [
+            file for file in request.files.getlist("csv_files")
+            if file and file.filename
+        ]
+        if not files:
+            error = "Выберите один или несколько CSV-файлов"
+        elif len(files) > 100:
+            error = "За один раз можно загрузить не более 100 файлов"
         else:
-            filename = secure_filename(file.filename)
-            path = UPLOAD_DIR / filename
-            file.save(path)
-            try:
-                rows_added, rows_replaced = import_observations(
-                    path, station_id, parameter, quality_flag, unit or None
-                )
-                message = f"Импорт завершён: добавлено {rows_added}, заменено {rows_replaced}"
-            except Exception as exc:
-                error = f"Ошибка импорта: {exc}"
+            con = connect_db()
+            cursor = con.execute(
+                "INSERT INTO import_batches(imported_at,username) VALUES(?,?)",
+                (datetime.now().isoformat(timespec="seconds"), current_user()),
+            )
+            batch_id = cursor.lastrowid
+            con.commit()
+            con.close()
+
+            imported = 0
+            failed = 0
+            for file in files:
+                filename = Path(file.filename.replace("\\", "/")).name
+                path = UPLOAD_DIR / f"{secrets.token_hex(12)}.csv"
+                try:
+                    file.save(path)
+                    import_observations(path, filename, batch_id)
+                    imported += 1
+                except (OSError, UnicodeError, csv.Error, ValueError, sqlite3.Error) as exc:
+                    record_import_failure(batch_id, filename, str(exc))
+                    app.logger.warning("CSV import failed for %s: %s", filename, exc)
+                    failed += 1
+            message = f"Обработано файлов: {len(files)}. Загружено: {imported}. С ошибками: {failed}."
 
     con = connect_db()
     stations = con.execute(
         "SELECT station_id,display_name FROM stations ORDER BY display_name"
     ).fetchall()
     imports = con.execute(
-        "SELECT * FROM import_log ORDER BY id DESC LIMIT 20"
+        """
+        SELECT f.id,b.imported_at,COALESCE(s.display_name,'—') AS station,
+               f.station_id,
+               f.filename,f.status,f.message,
+               COALESCE(GROUP_CONCAT(p.label || ' · ' || t.series_type, ', '),'') AS series
+        FROM import_files f
+        JOIN import_batches b ON b.id=f.batch_id
+        LEFT JOIN stations s ON s.station_id=f.station_id
+        LEFT JOIN import_series t ON t.file_id=f.id
+        LEFT JOIN parameters p ON p.code=t.parameter
+        GROUP BY f.id
+        ORDER BY f.id DESC LIMIT 50
+        """
     ).fetchall()
     con.close()
     backups = sorted(BACKUP_DIR.glob("hydro_*.db"), reverse=True)
@@ -1077,167 +1220,303 @@ def change_password():
     return redirect(url_for("admin"))
 
 
-def import_observations(path, station_id, parameter, quality_flag="unreviewed", unit=None):
-    try:
-        frame = pd.read_csv(path, sep=None, engine="python", encoding="utf-8-sig")
-    except UnicodeDecodeError:
-        frame = pd.read_csv(path, sep=None, engine="python", encoding="cp1251")
-    date_candidates = ("Dates", "date", "Date", "дата", "Дата")
-    date_col = next((name for name in date_candidates if name in frame.columns), None)
-    possible_values = {
-        "discharge": ["Discharge"],
-        "level_upper": ["Absolute_Levels"],
-        "level_lower": ["Absolute_Levels"],
-        "level": ["Absolute_Levels"],
-    }
-    value_col = "value" if "value" in frame.columns else None
-    if value_col is None:
-        for name in possible_values[parameter]:
-            if name in frame.columns:
-                value_col = name
-                break
-    if date_col is None or value_col is None:
-        raise ValueError(
-            "Нужны столбцы даты (Dates/date/дата) и значения "
-            "(Discharge/Absolute_Levels/value)"
-        )
+def normalize_words(value):
+    text = str(value).casefold().replace("ё", "е")
+    return re.sub(r"[\W_]+", " ", text, flags=re.UNICODE).strip()
 
-    clean = pd.DataFrame({
-        "date": pd.to_datetime(frame[date_col], dayfirst=True, errors="coerce"),
-        "value": pd.to_numeric(frame[value_col], errors="coerce"),
-    }).dropna()
-    quality_col = next(
-        (name for name in ("quality_flag", "quality", "качество", "проверка") if name in frame.columns),
-        None,
+
+def station_key(value):
+    name = normalize_words(value)
+    name = re.sub(r"^(с|пгт|село|поселок)\s+", "", name)
+    name = re.sub(r"\s+(гидроузел|гидропост|гэс|пост)$", "", name)
+    return name
+
+
+def station_from_filename(filename):
+    stem = Path(filename).stem
+    stem = re.sub(r"\s*\([^)]*\)\s*$", "", stem)
+    stem = stem.replace("_", " ")
+    stem = re.sub(r"^\s*\d+\s+", "", stem)
+    label = stem.casefold().replace("ё", "е")
+    is_post = "пост" in label or "гидропост" in label
+    is_hub = not is_post and (
+        "гидроузел" in label or "гэс" in label or "бьеф" in label
     )
-    note_col = next(
-        (name for name in ("quality_note", "quality_comment", "примечание качества") if name in frame.columns),
-        None,
+    patterns = (
+        r"^ход\s+уровней\s+поста\s+",
+        r"^уровень\s+воды\s+(?:верхнего|нижнего)\s+бьефа\s+в\s+срок\s+наблюдений\s+поста\s+",
+        r"^сброс\s+воды\s+",
+        r"^расход\s+",
     )
-    clean["quality_flag"] = (
-        frame.loc[clean.index, quality_col].fillna(quality_flag).astype(str)
-        if quality_col else quality_flag
-    )
-    if quality_col:
-        clean["quality_flag"] = clean["quality_flag"].str.strip().str.lower().replace(
-            {
-                "проверено": "checked",
-                "проверен": "checked",
-                "норма": "checked",
-                "подозрительно": "suspect",
-                "подозрительное": "suspect",
-                "сомнительно": "suspect",
-                "не проверено": "unreviewed",
-            }
-        )
-        clean.loc[
-            ~clean["quality_flag"].isin(("unreviewed", "checked", "suspect")),
-            "quality_flag",
-        ] = quality_flag
-    clean["quality_note"] = (
-        frame.loc[clean.index, note_col].fillna("").astype(str)
-        if note_col else ""
-    )
-    clean = clean.sort_values("date").drop_duplicates("date", keep="last")
+    for pattern in patterns:
+        shortened = re.sub(pattern, "", stem, flags=re.IGNORECASE)
+        if shortened != stem:
+            stem = shortened
+            break
+    stem = stem.strip()
+    stem = re.sub(r"\s+(гидроузел|гидропост|гэс|пост)$", "", stem, flags=re.IGNORECASE)
+    name = re.sub(r"\s+", " ", stem).strip(" _-.")
+    if not name or station_key(name) in ("гэс", "нижний бьеф", "верхний бьеф"):
+        detail = "Нижний бьеф" if "нижний бьеф" in label else "Объект не указан"
+        subject = "Расход ГЭС" if "расход гэс" in label else detail
+        name = f"{subject} (объект не указан)"
+    return name, "hub" if is_hub else "post"
 
-    con = connect_db()
-    station = con.execute(
-        "SELECT station_id FROM stations WHERE station_id=?", (station_id,)
-    ).fetchone()
-    if station is None:
-        con.close()
-        raise ValueError("Неизвестная станция")
 
-    metadata_aliases = {
-        "river": ("river", "River", "река"),
-        "display_name": ("display_name", "name", "Название", "station_name"),
-        "lat": ("lat", "latitude", "широта"),
-        "lon": ("lon", "longitude", "долгота"),
-        "object_type": ("object_type", "type", "тип"),
-        "river_section": ("river_section", "section", "участок"),
-        "source_name": ("source_name", "источник данных", "организация"),
-        "source_type": ("source_type", "источник"),
-        "source_note": ("source_note", "note", "описание"),
-        "source_istok": ("source_istok", "ИСТОК", "исток", "ISTOK"),
-        "tp": ("tp", "ТП", "TП"),
-        "unit": ("unit", "units", "единица измерения", "ед. изм."),
-    }
-    metadata = {}
-    for column, aliases in metadata_aliases.items():
-        alias = next((name for name in aliases if name in frame.columns), None)
-        if alias is not None:
-            values = frame[alias].dropna().astype(str).str.strip()
-            if not values.empty:
-                metadata[column] = values.iloc[0]
+def find_or_create_station(con, filename):
+    name, object_type = station_from_filename(filename)
+    key = station_key(name)
+    for station in con.execute(
+        "SELECT station_id,display_name,object_type FROM stations"
+    ):
+        existing_type = station["object_type"] or "hub"
+        if station_key(station["display_name"]) == key and existing_type == object_type:
+            return station["station_id"]
 
-    unit_from_file = metadata.pop("unit", None)
-    if "lat" in metadata or "lon" in metadata:
-        try:
-            lat_value = float(metadata["lat"])
-            lon_value = float(metadata["lon"])
-        except (KeyError, ValueError):
-            raise ValueError("Если CSV задаёт координаты, нужны и широта, и долгота")
-        if not (-90 <= lat_value <= 90 and -180 <= lon_value <= 180):
-            raise ValueError("Координаты объекта в CSV находятся вне допустимого диапазона")
-        metadata["lat"] = lat_value
-        metadata["lon"] = lon_value
-    if "object_type" in metadata:
-        object_type = str(metadata["object_type"]).lower()
-        object_type = {"пост": "post", "гидропост": "post", "гидроузел": "hub"}.get(
-            object_type, object_type
-        )
-        if object_type not in ("hub", "post"):
-            raise ValueError("Неизвестный тип объекта в CSV: используйте hub или post")
-        metadata["object_type"] = object_type
-    if metadata:
-        updates = ", ".join(f"{column}=?" for column in metadata)
-        con.execute(
-            f"UPDATE stations SET {updates} WHERE station_id=?",
-            [*metadata.values(), station_id],
-        )
-    parameter_unit = unit or unit_from_file
-    if parameter_unit:
-        con.execute("UPDATE parameters SET unit=? WHERE code=?", (parameter_unit, parameter))
-
-    replaced = 0
-    for row in clean.itertuples(index=False):
-        date_text = row.date.strftime("%Y-%m-%d")
-        existed = con.execute(
-            "SELECT 1 FROM observations WHERE station=? AND parameter=? AND date=?",
-            (station_id, parameter, date_text),
-        ).fetchone()
-        if existed:
-            replaced += 1
-        con.execute(
-            """
-            INSERT INTO observations(
-                station,parameter,date,value,quality_flag,quality_note
-            )
-            VALUES(?,?,?,?,?,?)
-            ON CONFLICT(station,parameter,date) DO UPDATE SET
-                value=excluded.value,
-                quality_flag=excluded.quality_flag,
-                quality_note=excluded.quality_note
-            """,
-            (
-                station_id, parameter, date_text, float(row.value),
-                row.quality_flag, row.quality_note or None,
-            ),
-        )
+    base_id = "csv_" + re.sub(r"\s+", "_", key)
+    station_id = base_id or "csv_imported_station"
+    suffix = 2
+    while con.execute(
+        "SELECT 1 FROM stations WHERE station_id=?", (station_id,)
+    ).fetchone():
+        station_id = f"{base_id}_{suffix}"
+        suffix += 1
     con.execute(
-        "INSERT INTO import_log(station_id,parameter,filename,imported_at,rows_added,rows_replaced)"
-        " VALUES(?,?,?,?,?,?)",
-        (station_id, parameter, path.name, datetime.now().isoformat(timespec="seconds"),
-         len(clean), replaced),
+        """
+        INSERT INTO stations(
+            station_id,display_name,river,lat,lon,db_station,object_type,
+            river_section,source_name,source_type,source_note
+        )
+        VALUES(?,?,NULL,NULL,NULL,? ,?,'','CSV','CSV',
+               'Река и координаты не указаны в загруженном файле')
+        """,
+        (station_id, name, station_id, object_type),
+    )
+    return station_id
+
+
+def read_hydrology_csv(path):
+    raw = Path(path).read_bytes()
+    text = None
+    for encoding in ("utf-8-sig", "cp1251"):
+        try:
+            text = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        raise ValueError("Не удалось определить кодировку CSV")
+    try:
+        delimiter = csv.Sniffer().sniff(text[:4096], delimiters=",;\t").delimiter
+    except csv.Error:
+        delimiter = ","
+    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+    if not reader.fieldnames:
+        raise ValueError("В CSV не найдена строка с названиями столбцов")
+    reader.fieldnames = [name.strip().lstrip("\ufeff") for name in reader.fieldnames]
+    return reader.fieldnames, list(reader)
+
+
+def detect_series(fieldnames, filename):
+    columns = {normalize_words(name): name for name in fieldnames}
+    date_column = next(
+        (columns[key] for key in ("dates", "date", "дата") if key in columns),
+        None,
+    )
+    if date_column is None:
+        raise ValueError("В CSV нет столбца даты (ожидается Dates или Дата)")
+
+    title = normalize_words(filename)
+    if "discharge" in columns:
+        level_parameter = "discharge"
+    elif "value" in columns and ("расход" in title or "discharge" in title):
+        level_parameter = "discharge"
+    elif "верхнего бьефа" in title:
+        level_parameter = "level_upper"
+    elif "нижнего бьефа" in title:
+        level_parameter = "level_lower"
+    else:
+        level_parameter = "level"
+
+    relative_parameter = {
+        "level": "level_relative",
+        "level_upper": "level_upper_relative",
+        "level_lower": "level_lower_relative",
+    }.get(level_parameter, "level_relative")
+    definitions = []
+    if "value" in columns and not any(
+        key in columns for key in ("discharge", "absolute levels")
+    ):
+        definitions.append(("value", level_parameter, "observed"))
+    definitions.extend(
+        (
+            ("discharge", "discharge", "observed"),
+            ("absolute levels", level_parameter, "observed"),
+            ("relative levels", relative_parameter, "observed"),
+            ("forecast discharge", "discharge", "forecast"),
+            ("forecast absolute levels", level_parameter, "forecast"),
+            ("forecast levels", relative_parameter, "forecast"),
+        )
+    )
+    series = [
+        (columns[column], parameter, series_type)
+        for column, parameter, series_type in definitions
+        if column in columns
+    ]
+    if not series:
+        raise ValueError("Не найдены столбцы гидрологических значений")
+    return date_column, series
+
+
+def parse_date(value):
+    value = (value or "").strip()
+    for date_format in ("%d-%m-%Y", "%Y-%m-%d", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(value, date_format).date().isoformat()
+        except ValueError:
+            continue
+    return None
+
+
+def parse_value(value):
+    try:
+        number = float((value or "").strip().replace(",", "."))
+    except ValueError:
+        return None
+    return number if math.isfinite(number) else None
+
+
+def parse_quality(value):
+    label = normalize_words(value or "")
+    return {
+        "checked": "checked",
+        "проверено": "checked",
+        "проверен": "checked",
+        "норма": "checked",
+        "suspect": "suspect",
+        "подозрительно": "suspect",
+        "подозрительное": "suspect",
+        "сомнительно": "suspect",
+        "unreviewed": "unreviewed",
+        "не проверено": "unreviewed",
+        "": "unreviewed",
+    }.get(label, "unreviewed")
+
+
+def record_import_failure(batch_id, filename, message):
+    con = connect_db()
+    con.execute(
+        "INSERT INTO import_files(batch_id,filename,status,message) VALUES(?,?,?,?)",
+        (batch_id, filename, "failed", message[:500]),
     )
     con.commit()
     con.close()
-    audit(
-        "Импорт данных",
-        f"{path.name}: {station_id}, {parameter}; {len(clean)} строк, "
-        f"пометка качества: {quality_flag}",
+
+
+def import_observations(path, filename, batch_id):
+    fieldnames, rows = read_hydrology_csv(path)
+    date_column, series = detect_series(fieldnames, filename)
+    station_name, object_type = station_from_filename(filename)
+    columns = {normalize_words(name): name for name in fieldnames}
+    quality_column = next(
+        (columns[key] for key in ("quality flag", "quality", "качество") if key in columns),
+        None,
     )
-    return len(clean) - replaced, replaced
+    note_column = next(
+        (columns[key] for key in ("quality note", "quality comment", "примечание качества") if key in columns),
+        None,
+    )
+    normalized = {}
+    skipped = {(parameter, kind): 0 for _, parameter, kind in series}
+
+    for row in rows:
+        date_text = parse_date(row.get(date_column))
+        for column, parameter, kind in series:
+            value = parse_value(row.get(column))
+            key = (parameter, kind)
+            if date_text is None or value is None:
+                skipped[key] += 1
+                continue
+            quality = parse_quality(row.get(quality_column)) if quality_column else "unreviewed"
+            note = (row.get(note_column) or "").strip() if note_column else ""
+            normalized.setdefault(key, {})[date_text] = (value, quality, note)
+    normalized = {key: values for key, values in normalized.items() if values}
+    if not normalized:
+        raise ValueError("В файле нет строк с корректными датами и значениями")
+
+    con = connect_db()
+    try:
+        with con:
+            station_id = find_or_create_station(con, filename)
+            file_cursor = con.execute(
+                """
+                INSERT INTO import_files(batch_id,filename,station_id,status,message)
+                VALUES(?,?,?,?,?)
+                """,
+                (
+                    batch_id,
+                    filename,
+                    station_id,
+                    "imported",
+                    f"Распознано: {station_name} ({object_type})",
+                ),
+            )
+            file_id = file_cursor.lastrowid
+            for (parameter, kind), values in normalized.items():
+                dates = sorted(values)
+                existing = {
+                    row["date"]
+                    for row in con.execute(
+                        """
+                        SELECT date FROM observations
+                        WHERE station=? AND parameter=? AND series_type=?
+                          AND date BETWEEN ? AND ?
+                        """,
+                        (station_id, parameter, kind, dates[0], dates[-1]),
+                    )
+                } & values.keys()
+                con.executemany(
+                    """
+                    INSERT INTO observations(
+                        station,parameter,date,value,quality_flag,quality_note,series_type
+                    )
+                    VALUES(?,?,?,?,?,?,?)
+                    ON CONFLICT(station,parameter,date,series_type) DO UPDATE SET
+                        value=excluded.value,
+                        quality_flag=excluded.quality_flag,
+                        quality_note=excluded.quality_note
+                    """,
+                    [
+                        (station_id, parameter, day, value, quality, note or None, kind)
+                        for day, (value, quality, note) in values.items()
+                    ],
+                )
+                con.execute(
+                    """
+                    INSERT INTO import_series(
+                        file_id,parameter,series_type,rows_added,rows_replaced,rows_skipped
+                    )
+                    VALUES(?,?,?,?,?,?)
+                    """,
+                    (
+                        file_id,
+                        parameter,
+                        kind,
+                        len(values) - len(existing),
+                        len(existing),
+                        skipped[(parameter, kind)],
+                    ),
+                )
+            total_rows = sum(len(values) for values in normalized.values())
+            con.execute(
+                "UPDATE import_files SET message=? WHERE id=?",
+                (
+                    f"Распознано: {station_name} ({object_type}); рядов данных: {total_rows}",
+                    file_id,
+                ),
+            )
+    finally:
+        con.close()
 
 
 if __name__ == "__main__":

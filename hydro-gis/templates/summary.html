@@ -22,7 +22,10 @@
 </head>
 <body>
   <h1>{{ station.display_name }} — {{ meta.label }} ({{ meta.unit }})</h1>
-  <div class="period">Период: {{ date_from or "все наблюдения" }} — {{ date_to or "по последнюю дату" }}</div>
+  <div class="period">
+    Ряд: {{ "прогноз" if series_type == "forecast" else "наблюдения" }}.
+    Период: {{ date_from or "все данные" }} — {{ date_to or "по последнюю дату" }}
+  </div>
   {% if stats %}
   <div class="grid">
     <div class="card"><div class="label">Число наблюдений</div><div class="value">{{ stats.count }}</div></div>

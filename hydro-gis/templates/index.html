@@ -12,7 +12,7 @@
     .brand { display:flex; align-items:center; gap:9px; white-space:nowrap; }
     .brand img { width:32px; height:32px; }
     .brand-title { font-weight:700; font-size:17px; }
-    .tools-bar { display:flex; align-items:center; justify-content:center; gap:7px; flex:1; }
+    .tools-bar { display:flex; align-items:center; justify-content:center; gap:12px; flex:1; }
     .tools-bar a { text-decoration:none; }
     .tool-button { display:flex; align-items:center; gap:7px; border:1px solid #54718c;
       border-radius:8px; padding:7px 10px; background:#27445f; color:white; cursor:pointer;
@@ -119,12 +119,13 @@
     #compareStationList { overflow:auto; min-height:120px; max-height:36vh; margin-top:8px;
       border:1px solid #d9e3ed; border-radius:8px; }
     .compare-station { display:flex; align-items:center; gap:9px; padding:9px 11px;
-      border-bottom:1px solid #edf1f5; color:#26384a!important; cursor:pointer; }
+      margin:0!important; border-bottom:1px solid #edf1f5; color:#26384a!important; cursor:pointer; }
     .compare-station:last-child { border-bottom:0; }
     .compare-station input { accent-color:#1769aa; }
-    .compare-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap;
-      gap:8px; margin-top:12px; }
-    #compareCount { margin-right:auto; color:#63788d; font-size:13px; }
+    .compare-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:12px; margin-top:14px; }
+    .compare-actions button { min-height:40px; margin:0; line-height:1.25; white-space:normal; }
+    #compareCount { grid-column:1/-1; color:#63788d; font-size:13px; }
     #compareError { display:none; margin:9px 0 0; color:#a83232; font-size:13px; }
     #compareError.visible { display:block; }
     .compare-actions .primary { border-color:#1769aa; color:white; background:#1769aa; }
@@ -140,6 +141,10 @@
       main { grid-template-columns:230px 1fr; }
       #chartOverlay { width:calc(100% - 16px); height:calc(100% - 16px); }
       .date-date-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    }
+    @media (max-width:520px) {
+      .compare-actions { grid-template-columns:1fr; }
+      #compareCount { grid-column:1; }
     }
   </style>
 </head>
@@ -238,20 +243,30 @@
         <h2 id="compareTitle">Сравнение объектов</h2>
         <button id="compareClose" type="button" aria-label="Закрыть">Закрыть</button>
       </div>
+      <p>Отметьте минимум два объекта. Активный на карте объект отмечается автоматически.</p>
       <label for="compareParameter">Показатель</label>
       <select id="compareParameter">
         <option value="discharge">Расход воды, м³/с</option>
         <option value="level_upper">Уровень верхнего бьефа, м</option>
         <option value="level_lower">Уровень нижнего бьефа, м</option>
         <option value="level">Уровень воды, м</option>
+        <option value="level_upper_relative">Относительный уровень верхнего бьефа, см</option>
+        <option value="level_lower_relative">Относительный уровень нижнего бьефа, см</option>
+        <option value="level_relative">Относительный уровень на гидропосту, см</option>
+      </select>
+      <label for="compareSeries">Тип ряда</label>
+      <select id="compareSeries">
+        <option value="observed">Фактические наблюдения</option>
+        <option value="forecast">Прогноз</option>
       </select>
       <label for="compareSearch">Найти гидроузел или гидропост</label>
       <input id="compareSearch" type="search" placeholder="Начните вводить название">
       <div id="compareStationList">
         {% for s in stations %}
-        <label class="compare-station" data-name="{{ s.display_name|lower }}" data-river="{{ s.river|lower }}">
+        <label class="compare-station" data-name="{{ s.display_name|lower }}"
+               data-river="{{ (s.river or 'Река не указана')|lower }}">
           <input class="compare-check" type="checkbox" value="{{ s.station_id }}">
-          <span>{{ s.display_name }} · {{ s.river }}</span>
+          <span>{{ s.display_name }} · {{ s.river or "Река не указана" }}</span>
         </label>
         {% endfor %}
       </div>
@@ -275,7 +290,10 @@
       ["discharge", "Расход воды"],
       ["level_upper", "Уровень верхнего бьефа"],
       ["level_lower", "Уровень нижнего бьефа"],
-      ["level", "Уровень воды на гидропосту"]
+      ["level", "Уровень воды на гидропосту"],
+      ["level_upper_relative", "Относительный уровень верхнего бьефа"],
+      ["level_lower_relative", "Относительный уровень нижнего бьефа"],
+      ["level_relative", "Относительный уровень"]
     ];
     function dateAt(offset) {
       return new Date(dateMin.getTime() + Number(offset) * dayMilliseconds)
@@ -353,6 +371,7 @@
       return new URLSearchParams({
         station: selected,
         parameter: parameter,
+        series_type: "observed",
         from: document.getElementById("dateFrom").value,
         to: document.getElementById("dateTo").value
       });
@@ -510,6 +529,7 @@
       const params = new URLSearchParams({
         stations: stationIds.join(","),
         parameter: document.getElementById("compareParameter").value,
+        series_type: document.getElementById("compareSeries").value,
         mode: mode,
         from: document.getElementById("dateFrom").value,
         to: document.getElementById("dateTo").value
@@ -540,6 +560,7 @@
       if (!ids.length) { alert("Выберите объект в списке сравнения"); return; }
       const params = new URLSearchParams({
         parameter: document.getElementById("compareParameter").value,
+        series_type: document.getElementById("compareSeries").value,
         from: document.getElementById("dateFrom").value,
         to: document.getElementById("dateTo").value
       });
