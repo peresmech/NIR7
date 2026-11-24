@@ -3,13 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>HydroGIS</title>
+  <title>ГидроРежим — ГИС гидрологических данных</title>
   <style>
     :root { --nav:#18324a; --accent:#1769aa; --bg:#eef3f8; }
     body { margin:0; font-family:Segoe UI,Arial,sans-serif; background:var(--bg); color:#26384a; }
-    header { height:58px; background:var(--nav); color:white; display:flex; align-items:center;
-      justify-content:space-between; padding:0 18px; }
-    header a { color:white; text-decoration:none; margin-left:14px; }
+    header { min-height:58px; background:var(--nav); color:white; display:flex; align-items:center;
+      justify-content:space-between; gap:12px; padding:0 16px; }
+    .brand { display:flex; align-items:center; gap:9px; white-space:nowrap; }
+    .brand img { width:32px; height:32px; }
+    .brand-title { font-weight:700; font-size:17px; }
+    .tools-bar { display:flex; align-items:center; justify-content:center; gap:7px; flex:1; }
+    .tools-bar a { text-decoration:none; }
+    .tool-button { display:flex; align-items:center; gap:7px; border:1px solid #54718c;
+      border-radius:8px; padding:7px 10px; background:#27445f; color:white; cursor:pointer;
+      white-space:nowrap; font-size:13px; }
+    .tool-button:hover { background:#355a7b; }
+    .tool-button svg { width:17px; height:17px; }
+    .tool-select { border:1px solid #54718c; border-radius:8px; padding:7px 8px;
+      background:#27445f; color:white; max-width:160px; }
+    .user-links { white-space:nowrap; }
+    .user-links a { color:white; text-decoration:none; margin-left:14px; }
     main { height:calc(100vh - 58px); display:grid; grid-template-columns:280px 1fr; }
     aside { background:white; padding:16px; overflow:auto; border-right:1px solid #d9e3ed; }
     aside select,aside input,aside button { width:100%; box-sizing:border-box; padding:9px;
@@ -30,30 +43,27 @@
       transition:width .18s ease;
     }
     #graphDrawer.open { width:230px; }
-    #drawerToggle {
-      width:100%; height:46px; border:0; border-bottom:1px solid #dde6ef;
-      background:white; color:#18324a; font-size:20px; cursor:pointer;
-    }
-    #drawerContent { display:none; height:calc(100% - 46px); overflow-y:auto; padding:8px; }
-    #graphDrawer.open #drawerContent { display:block; }
-    .graph-icon {
-      width:42px; height:42px; border:1px solid #d3dfeb; border-radius:9px;
-      background:#eef4fa; color:#1769aa; cursor:pointer; font-size:20px;
-      float:left; margin:0 8px 8px 0;
-    }
-    #graphDrawer.open .graph-icon { float:none; width:100%; height:auto; min-height:44px;
-      display:flex; align-items:center; gap:8px; padding:6px 10px; margin:0 0 8px;
-      text-align:left; font-size:14px;
-    }
-    .graph-icon span { display:none; }
-    #graphDrawer.open .graph-icon span { display:inline; }
-    .graph-icon svg { width:20px; height:20px; min-width:20px; }
+    #graphDrawer { display:none; width:300px; padding:12px; }
+    #graphDrawer.open { display:block; }
+    .graph-card { border:1px solid #d4dfeb; border-radius:9px; overflow:hidden;
+      margin:0 0 10px; background:white; }
+    .graph-card img { width:100%; height:96px; display:block; object-fit:cover;
+      cursor:pointer; background:#f7f9fb; }
+    .graph-card-footer { display:flex; align-items:center; justify-content:space-between;
+      padding:7px 9px; gap:6px; font-size:13px; }
+    .graph-card-footer button,.graph-card-footer a { border:0; border-radius:6px;
+      color:#1769aa; background:#edf4fa; text-decoration:none; padding:6px 8px;
+      cursor:pointer; white-space:nowrap; }
+    .station-check { width:auto!important; height:auto; padding:0!important;
+      margin:0 7px 0 0!important; border:0!important; vertical-align:middle;
+      accent-color:#1769aa; }
     #chartOverlay {
       position:absolute; z-index:30; display:none; top:24px; left:24px;
-      right:266px; bottom:24px; background:white; border:1px solid #bfcddd;
+      right:24px; bottom:24px; background:white; border:1px solid #bfcddd;
       border-radius:14px; box-shadow:0 16px 40px rgba(18,43,69,.28); overflow:hidden;
     }
     #chartOverlay.open { display:flex; flex-direction:column; }
+    #chartOverlay.with-drawer { right:330px; }
     .overlay-bar { height:48px; min-height:48px; display:flex; align-items:center;
       justify-content:space-between; padding:0 10px 0 16px; background:#f5f8fb;
       border-bottom:1px solid #dde6ef; }
@@ -65,12 +75,51 @@
       cursor:pointer; font-size:13px;
     }
     #chartOverlayFrame { flex:1; width:100%; border:0; background:white; }
+    @media (max-width:850px) {
+      header { flex-wrap:wrap; padding:8px 12px; }
+      .tools-bar { order:3; flex-basis:100%; justify-content:flex-start; overflow-x:auto; }
+      .tool-button { padding:6px 8px; }
+      .tool-button span { display:none; }
+      main { grid-template-columns:230px 1fr; }
+      #chartOverlay { left:8px; right:8px; top:8px; bottom:8px; }
+    }
   </style>
 </head>
 <body>
   <header>
-    <strong>HydroGIS</strong>
-    <div>{{ username }}{% if is_admin %}<a href="/admin">Администрирование</a>{% endif %}<a href="/logout">Выход</a></div>
+    <div class="brand">
+      <img src="/static/hydro-regime.svg" alt="">
+      <span class="brand-title">ГидроРежим</span>
+    </div>
+    <nav class="tools-bar" aria-label="Инструменты">
+      <button class="tool-button" id="graphsButton" title="Открыть галерею графиков">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V5M4 19H21M7 15l4-4 3 2 5-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Графики</span>
+      </button>
+      <button class="tool-button" id="summaryButton" title="Сводные показатели">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V5M4 19H21M8 15v-3m5 3V8m5 7V5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Показатели</span>
+      </button>
+      <select class="tool-select" id="compareParameter" title="Параметр сравнения">
+        <option value="discharge">Расход, м³/с</option>
+        <option value="level_upper">Верхний бьеф, м</option>
+        <option value="level_lower">Нижний бьеф, м</option>
+        <option value="level">Уровень, м</option>
+      </select>
+      <button class="tool-button" id="compareButton" title="Сравнить выбранные объекты">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 18V8m5 10V5m6 13v-7m5 7V3M2 18h20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Сравнить</span>
+      </button>
+      <button class="tool-button" id="annualButton" title="Межгодовая динамика">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V5M4 19H21M7 15l4-5 3 2 5-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 5h3v3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>По годам</span>
+      </button>
+      <button class="tool-button" id="exportButton" title="Экспорт таблицы CSV">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Экспорт CSV</span>
+      </button>
+      {% if is_admin %}
+      <a class="tool-button" href="/admin/audit" title="Журнал действий">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Журнал</span>
+      </a>
+      {% endif %}
+    </nav>
+    <div class="user-links">{{ username }}{% if is_admin %}<a href="/admin">Администрирование</a>{% endif %}<a href="/logout">Выход</a></div>
   </header>
   <main>
     <aside>
@@ -85,6 +134,7 @@
       <label>С даты</label><input id="dateFrom" type="date">
       <label>По дату</label><input id="dateTo" type="date">
       <h3>Объекты</h3>
+      <small>Отметьте несколько объектов для сравнения и межгодового анализа.</small>
       <div id="stations">
         {% for group_name, group_stations in station_groups.items() %}
         <section class="station-group">
@@ -92,6 +142,8 @@
           {% for s in group_stations %}
           <div class="station" data-id="{{ s.station_id }}" data-river="{{ s.river }}"
                data-name="{{ s.display_name }}" data-type="{{ s.object_type }}">
+            <input class="station-check" type="checkbox" value="{{ s.station_id }}"
+                   aria-label="Добавить {{ s.display_name }} в выборку">
             {{ s.display_name }}
           </div>
           {% endfor %}
@@ -101,8 +153,8 @@
     </aside>
     <section>
       <iframe id="mapFrame" src="/map"></iframe>
-      <div id="graphDrawer" aria-label="Меню графиков">
-        <button id="drawerToggle" title="Открыть меню графиков">▣</button>
+      <div id="graphDrawer" aria-label="Графики">
+        <h3>Графики объекта</h3>
         <div id="drawerContent"></div>
       </div>
       <div id="chartOverlay" role="dialog" aria-modal="false">
@@ -121,10 +173,10 @@
     let selected = null;
     const stations = document.querySelectorAll(".station");
     const thumbParameters = [
-      ["discharge", "Расход воды", '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 16.5L8 11l4 3.5L20.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15.5 5H20.5V10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'],
-      ["level_upper", "Верхний бьеф", '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 14C6 12 8 12 10 14C12 16 14 16 16 14C18 12 20 12 22 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 18H20M12 4V10M9 7L12 4L15 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'],
-      ["level_lower", "Нижний бьеф", '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 14C6 12 8 12 10 14C12 16 14 16 16 14C18 12 20 12 22 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 18H20M12 20V14M9 17L12 20L15 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'],
-      ["level", "Уровень", '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 3V21M9 7H18M9 12H16M9 17H18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>']
+      ["discharge", "Расход воды"],
+      ["level_upper", "Уровень верхнего бьефа"],
+      ["level_lower", "Уровень нижнего бьефа"],
+      ["level", "Уровень воды на гидропосту"]
     ];
     function chartParams(parameter) {
       return new URLSearchParams({
@@ -141,29 +193,52 @@
       thumbParameters.forEach(function(item) {
         const params = chartParams(item[0]);
         const url = "/plot?" + params.toString();
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "graph-icon";
-        button.title = item[1];
-        button.innerHTML = item[2] + '<span>' + item[1] + '</span>';
-        button.addEventListener("click", function() {
-          openChart(item[1], url);
+        const card = document.createElement("div");
+        card.className = "graph-card";
+        const preview = document.createElement("img");
+        preview.alt = "Мини-график: " + item[1];
+        preview.src = url + "&mini=1";
+        preview.addEventListener("click", function() {
+          openChart(item[1], url, url + "&download=1");
         });
-        content.appendChild(button);
+        const footer = document.createElement("div");
+        footer.className = "graph-card-footer";
+        const label = document.createElement("strong");
+        label.textContent = item[1];
+        const open = document.createElement("button");
+        open.type = "button";
+        open.textContent = "Открыть";
+        open.addEventListener("click", function() {
+          openChart(item[1], url, url + "&download=1");
+        });
+        const download = document.createElement("a");
+        download.href = url + "&download=1";
+        download.textContent = "PNG";
+        footer.append(label, open, download);
+        card.append(preview, footer);
+        content.appendChild(card);
       });
     }
-    function openChart(title, url) {
+    function openChart(title, url, downloadUrl) {
       document.getElementById("chartTitle").textContent = title;
       document.getElementById("chartOverlayFrame").src = url;
-      document.getElementById("chartDownload").href = url + "&download=1";
-      document.getElementById("chartOverlay").classList.add("open");
+      const download = document.getElementById("chartDownload");
+      download.hidden = !downloadUrl;
+      if (downloadUrl) download.href = downloadUrl;
+      const overlay = document.getElementById("chartOverlay");
+      overlay.classList.toggle("with-drawer", document.getElementById("graphDrawer").classList.contains("open"));
+      overlay.classList.add("open");
     }
-    document.getElementById("drawerToggle").addEventListener("click", function() {
+    document.getElementById("graphsButton").addEventListener("click", function() {
       if (!selected) {
         alert("Выберите объект из списка");
         return;
       }
-      document.getElementById("graphDrawer").classList.toggle("open");
+      const drawer = document.getElementById("graphDrawer");
+      const opening = !drawer.classList.contains("open");
+      drawer.classList.toggle("open", opening);
+      document.getElementById("chartOverlay").classList.toggle("with-drawer", opening);
+      if (opening) updateGraphMenu();
     });
     document.getElementById("chartClose").addEventListener("click", function() {
       document.getElementById("chartOverlay").classList.remove("open");
@@ -179,13 +254,16 @@
         (selected ? "&station=" + encodeURIComponent(selected) : "");
     }
     stations.forEach(function(el) {
+      el.querySelector(".station-check").addEventListener("click", function(event) {
+        event.stopPropagation();
+      });
       el.addEventListener("click", function() {
         stations.forEach(s => s.classList.remove("active"));
         el.classList.add("active");
         selected = el.dataset.id;
         updateMap();
         updateGraphMenu();
-        document.getElementById("graphDrawer").classList.add("open");
+        document.getElementById("graphDrawer").classList.remove("open");
       });
     });
     document.getElementById("overview").addEventListener("change", updateMap);
@@ -203,6 +281,50 @@
     });
     document.getElementById("dateFrom").addEventListener("change", updateGraphMenu);
     document.getElementById("dateTo").addEventListener("change", updateGraphMenu);
+    function selectedForAnalysis() {
+      const checked = Array.from(document.querySelectorAll(".station-check:checked"))
+        .map(input => input.value);
+      return checked.length ? checked : (selected ? [selected] : []);
+    }
+    function comparisonUrl(mode) {
+      const stationIds = selectedForAnalysis();
+      if (stationIds.length < 2) {
+        alert("Для сравнения отметьте флажками не менее двух объектов");
+        return null;
+      }
+      const params = new URLSearchParams({
+        stations: stationIds.join(","),
+        parameter: document.getElementById("compareParameter").value,
+        mode: mode,
+        from: document.getElementById("dateFrom").value,
+        to: document.getElementById("dateTo").value
+      });
+      return "/compare?" + params.toString();
+    }
+    document.getElementById("compareButton").addEventListener("click", function() {
+      const url = comparisonUrl("timeseries");
+      if (url) openChart("Сравнение станций", url, url + "&download=1");
+    });
+    document.getElementById("annualButton").addEventListener("click", function() {
+      const url = comparisonUrl("annual");
+      if (url) openChart("Межгодовая динамика", url, url + "&download=1");
+    });
+    document.getElementById("summaryButton").addEventListener("click", function() {
+      if (!selected) { alert("Выберите объект из списка или на карте"); return; }
+      const params = chartParams(document.getElementById("compareParameter").value);
+      openChart("Сводные показатели", "/summary?" + params.toString());
+    });
+    document.getElementById("exportButton").addEventListener("click", function() {
+      const ids = selectedForAnalysis();
+      if (!ids.length) { alert("Выберите объект из списка или отметьте объекты флажками"); return; }
+      const params = new URLSearchParams({
+        parameter: document.getElementById("compareParameter").value,
+        from: document.getElementById("dateFrom").value,
+        to: document.getElementById("dateTo").value
+      });
+      ids.forEach(id => params.append("station", id));
+      window.location.href = "/export/table?" + params.toString();
+    });
   </script>
 </body>
 </html>

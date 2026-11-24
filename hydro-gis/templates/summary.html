@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Сводные показатели</title>
+  <style>
+    body { font:15px Segoe UI,Arial,sans-serif; margin:24px; color:#26384a; }
+    h1 { font-size:22px; color:#18324a; }
+    .period { color:#63788d; margin-bottom:18px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px; }
+    .card { border:1px solid #d9e3ed; border-radius:10px; padding:14px; }
+    .label { color:#63788d; font-size:13px; }
+    .value { font-size:21px; font-weight:650; margin-top:5px; }
+    .note { padding:12px; background:#fff6dd; border-radius:8px; }
+  </style>
+</head>
+<body>
+  <h1>{{ station.display_name }} — {{ meta.label }} ({{ meta.unit }})</h1>
+  <div class="period">Период: {{ date_from or "все наблюдения" }} — {{ date_to or "по последнюю дату" }}</div>
+  {% if stats %}
+  <div class="grid">
+    <div class="card"><div class="label">Число наблюдений</div><div class="value">{{ stats.count }}</div></div>
+    <div class="card"><div class="label">Среднее</div><div class="value">{{ "%.3f"|format(stats.mean) }} {{ meta.unit }}</div></div>
+    <div class="card"><div class="label">Медиана</div><div class="value">{{ "%.3f"|format(stats.median) }} {{ meta.unit }}</div></div>
+    <div class="card"><div class="label">Минимум · {{ stats.min_date }}</div><div class="value">{{ "%.3f"|format(stats.min) }} {{ meta.unit }}</div></div>
+    <div class="card"><div class="label">Максимум · {{ stats.max_date }}</div><div class="value">{{ "%.3f"|format(stats.max) }} {{ meta.unit }}</div></div>
+    <div class="card"><div class="label">Амплитуда</div><div class="value">{{ "%.3f"|format(stats.amplitude) }} {{ meta.unit }}</div></div>
+    <div class="card"><div class="label">Стандартное отклонение</div><div class="value">{{ "%.3f"|format(stats.std) }} {{ meta.unit }}</div></div>
+    {% if stats.max_rise_per_day is not none %}
+    <div class="card"><div class="label">Максимальный рост за сутки*</div><div class="value">{{ "%.3f"|format(stats.max_rise_per_day) }} {{ meta.unit }}/сут</div></div>
+    <div class="card"><div class="label">Максимальное снижение за сутки*</div><div class="value">{{ "%.3f"|format(stats.max_fall_per_day) }} {{ meta.unit }}/сут</div></div>
+    {% endif %}
+    <div class="card"><div class="label">Не проверено / подозрительно</div><div class="value">{{ stats.unreviewed }} / {{ stats.suspect }}</div></div>
+  </div>
+  <p class="period">* Скорость рассчитана между соседними наблюдениями и нормирована на сутки.</p>
+  <h2>Межгодовые показатели</h2>
+  <table style="width:100%;border-collapse:collapse">
+    <thead><tr><th>Год</th><th>Среднее, {{ meta.unit }}</th><th>Минимум</th><th>Максимум</th><th>Наблюдений</th></tr></thead>
+    <tbody>{% for row in annual_rows %}
+      <tr><td>{{ row.year }}</td><td>{{ "%.3f"|format(row.mean) }}</td>
+        <td>{{ "%.3f"|format(row.min) }}</td><td>{{ "%.3f"|format(row.max) }}</td><td>{{ row.count }}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% else %}
+  <p>За выбранный период наблюдений нет.</p>
+  {% endif %}
+  {% if station.source_istok or station.tp or station.source_name or station.source_type or station.source_note %}
+  <h2>Метаданные объекта</h2>
+  <div class="grid">
+    {% if station.source_istok %}<div class="card"><div class="label">ИСТОК</div><div class="value">{{ station.source_istok }}</div></div>{% endif %}
+    {% if station.tp %}<div class="card"><div class="label">ТП</div><div class="value">{{ station.tp }}</div></div>{% endif %}
+    {% if station.source_name %}<div class="card"><div class="label">Источник</div><div class="value">{{ station.source_name }}</div></div>{% endif %}
+    {% if station.source_type %}<div class="card"><div class="label">Тип источника</div><div class="value">{{ station.source_type }}</div></div>{% endif %}
+    {% if station.source_note %}<div class="card"><div class="label">Примечание</div><div class="value">{{ station.source_note }}</div></div>{% endif %}
+  </div>
+  {% endif %}
+</body>
+</html>

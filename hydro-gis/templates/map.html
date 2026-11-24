@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/vendor/leaflet.css">
+  <style>
+    html,body,#map { width:100%;height:100%;margin:0;background:#e8eef2; }
+    .leaflet-popup-content { line-height:1.55; }
+    .leaflet-control-attribution { font-size:10px; }
+  </style>
+  <script src="/static/vendor/leaflet.js"></script>
+</head>
+<body>
+  <div id="map" aria-label="Карта гидрологических объектов"></div>
+  <script>
+    const stations = {{ stations|tojson }};
+    const selectedStation = {{ selected_station|tojson }};
+    const map = L.map("map", {zoomControl:true}).setView({{ center|tojson }}, 5);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom:19,
+      attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+    const bounds = [];
+    stations.forEach(function(station) {
+      const selected = station.station_id === selectedStation;
+      const kind = station.object_type === "hub" ? "Гидроузел" : "Гидропост";
+      const marker = L.circleMarker([station.lat,station.lon], {
+        radius:selected ? 9 : 6,
+        color:selected ? "#e67e22" : "#1976d2",
+        fillColor:selected ? "#e67e22" : "#1976d2",
+        fillOpacity:.9,
+        weight:2
+      }).addTo(map);
+      marker.bindTooltip(station.display_name);
+      const popup = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = station.display_name;
+      popup.append(title,document.createElement("br"));
+      popup.append(document.createTextNode(kind + " · " + station.river));
+      if (station.source_istok) {
+        popup.append(document.createElement("br"));
+        popup.append(document.createTextNode("ИСТОК: " + station.source_istok));
+      }
+      if (station.tp) {
+        popup.append(document.createElement("br"));
+        popup.append(document.createTextNode("ТП: " + station.tp));
+      }
+      marker.bindPopup(popup);
+      marker.on("click",function() {
+        window.parent.postMessage({
+          type:"hydroStationSelected",
+          stationId:station.station_id
+        },"*");
+      });
+      bounds.push([station.lat,station.lon]);
+    });
+    if (bounds.length > 1) map.fitBounds(bounds,{padding:[36,36],maxZoom:8});
+  </script>
+</body>
+</html>

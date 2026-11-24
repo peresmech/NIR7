@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Журнал действий — ГидроРежим</title>
+  <style>
+    body { font:14px Segoe UI,Arial,sans-serif; margin:24px; color:#26384a; }
+    h1 { color:#18324a; } a { color:#1769aa; }
+    table { width:100%; border-collapse:collapse; }
+    th,td { padding:9px; text-align:left; border-bottom:1px solid #e1e8ef; }
+    th { background:#f3f7fa; }
+  </style>
+</head>
+<body>
+  <h1>Журнал действий</h1>
+  <p><a href="/admin">Вернуться в администрирование</a></p>
+  <table>
+    <thead><tr><th>Время</th><th>Пользователь</th><th>Действие</th><th>Подробности</th></tr></thead>
+    <tbody>
+      {% for row in entries %}
+      <tr><td>{{ row.created_at }}</td><td>{{ row.username }}</td><td>{{ row.action }}</td><td>{{ row.details }}</td></tr>
+      {% else %}
+      <tr><td colspan="4">Записей пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

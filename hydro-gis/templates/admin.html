@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <title>HydroGIS — администрирование</title>
+  <title>ГидроРежим — администрирование</title>
   <style>
     body { margin:0; font-family:Segoe UI,Arial,sans-serif; background:#eef3f8; color:#26384a; }
     header { height:58px; background:#18324a; color:white; display:flex; align-items:center;
@@ -34,6 +34,12 @@
         <option value="level_lower">Нижний бьеф</option>
         <option value="level">Уровень на гидропосте</option>
       </select>
+      <input name="unit" placeholder="Единица измерения (например, м³/с)">
+      <select name="quality_flag" aria-label="Начальная пометка качества">
+        <option value="unreviewed">Качество не проверено</option>
+        <option value="checked">Проверено</option>
+        <option value="suspect">Подозрительные данные</option>
+      </select>
       <input type="file" name="csv_file" accept=".csv" required>
       <button type="submit">Импортировать</button>
     </form>
@@ -51,10 +57,34 @@
         <option value="post">Гидропост</option>
       </select>
       <input name="river_section" placeholder="Участок реки">
-      <input name="source_name" placeholder="Источник данных / исток">
+      <input name="source_istok" placeholder="ИСТОК / исток">
+      <input name="tp" placeholder="ТП">
+      <input name="source_name" placeholder="Организация или документ-источник">
       <input name="source_type" placeholder="Тип источника">
-      <input name="source_note" placeholder="ТП или примечание">
+      <input name="source_note" placeholder="Дополнительное примечание">
       <button type="submit">Сохранить объект</button>
+    </form>
+    <h3>Отметить качество данных</h3>
+    <form method="post" action="/admin/quality">
+      <select name="station_id" required>
+        <option value="">Объект</option>
+        {% for s in stations %}<option value="{{ s.station_id }}">{{ s.display_name }}</option>{% endfor %}
+      </select>
+      <select name="parameter" required>
+        <option value="discharge">Расход воды</option>
+        <option value="level_upper">Верхний бьеф</option>
+        <option value="level_lower">Нижний бьеф</option>
+        <option value="level">Уровень на гидропосту</option>
+      </select>
+      <label>С даты <input name="date_from" type="date" required></label>
+      <label>По дату <input name="date_to" type="date" required></label>
+      <select name="quality_flag">
+        <option value="checked">Проверено</option>
+        <option value="suspect">Подозрительно</option>
+        <option value="unreviewed">Не проверено</option>
+      </select>
+      <input name="quality_note" placeholder="Причина или комментарий">
+      <button type="submit">Обновить отметки</button>
     </form>
     <h3>Смена пароля администратора</h3>
     <form method="post" action="/admin/password">
@@ -70,6 +100,18 @@
         <td>{{ r.filename }}</td><td>{{ r.rows_added }}</td></tr>
       {% endfor %}
     </table>
+    <h3>История действий и резервные копии</h3>
+    <p><a href="/admin/audit">Открыть журнал действий</a></p>
+    <form method="post" action="/admin/backup">
+      <button type="submit">Создать резервную копию базы</button>
+    </form>
+    <ul>
+      {% for backup in backups %}
+      <li><a href="/admin/backup/{{ backup }}">{{ backup }}</a></li>
+      {% else %}
+      <li>Резервных копий пока нет.</li>
+      {% endfor %}
+    </ul>
   </main>
 </body>
 </html>

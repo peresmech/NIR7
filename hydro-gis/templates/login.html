@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>HydroGIS — вход</title>
+  <title>ГидроРежим — вход</title>
   <style>
     body { margin:0; min-height:100vh; display:grid; place-items:center;
       font-family:Segoe UI,Arial,sans-serif; background:#eef3f8; color:#18324a; }
@@ -21,7 +21,10 @@
 </head>
 <body>
   <form class="card" method="post">
-    <h1>HydroGIS</h1>
+    <h1 style="display:flex;align-items:center;gap:10px">
+      <img src="/static/hydro-regime.svg" alt="" width="42" height="42">
+      ГидроРежим
+    </h1>
     <p>Геоинформационная система гидрологического режима</p>
     {% if error %}<p class="error">{{ error }}</p>{% endif %}
     <input name="username" placeholder="Имя пользователя" autocomplete="username" required>
