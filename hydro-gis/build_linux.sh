@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 set -e
 cd "$(dirname "$0")"
-python3 -m pip install --no-cache-dir -r requirements.txt
-python3 -m pip install --no-cache-dir pyinstaller
-python3 -m PyInstaller --noconsole --onedir --name GidroRezhim \
+if [ ! -x ".venv/bin/python" ]; then
+  python3 -m venv .venv
+fi
+.venv/bin/python -m pip install --no-cache-dir -r requirements.txt
+.venv/bin/python -m pip install --no-cache-dir pyinstaller
+.venv/bin/python -m PyInstaller --noconfirm --onedir --name GidroRezhim \
+  --collect-all PyQt5.QtWebEngineWidgets \
+  --collect-all PyQt5.QtWebEngineCore \
+  --hidden-import PyQt5.QtWebEngineWidgets \
+  --hidden-import PyQt5.QtWebEngineCore \
   --add-data "templates:templates" \
   --add-data "static:static" \
   --add-data "resources:resources" \
   app.py
-echo "Готово: dist/GidroRezhim/GidroRezhim"
+echo "Переносимая сборка: dist/GidroRezhim (скопируйте всю папку)"

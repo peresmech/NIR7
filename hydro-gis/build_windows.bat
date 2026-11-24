@@ -1,14 +1,45 @@
 @echo off
 cd /d "%~dp0"
-python -m pip install --no-cache-dir -r requirements.txt
-python -m pip install --no-cache-dir pyinstaller
-python -m PyInstaller --noconsole --onedir --name GidroRezhim ^
+setlocal
+
+if not exist ".venv\Scripts\python.exe" (
+  where py >nul 2>nul
+  if errorlevel 1 (
+    python -m venv .venv
+  ) else (
+    py -3 -m venv .venv
+  )
+  if errorlevel 1 goto failed
+)
+
+".venv\Scripts\python.exe" -m pip install --no-cache-dir -r requirements.txt
+if errorlevel 1 goto failed
+".venv\Scripts\python.exe" -m pip install --no-cache-dir pyinstaller
+if errorlevel 1 goto failed
+".venv\Scripts\python.exe" -m PyInstaller --noconfirm --onedir --name GidroRezhim ^
   --icon "resources\hydro-regime.ico" ^
+  --collect-all PyQt5.QtWebEngineWidgets ^
+  --collect-all PyQt5.QtWebEngineCore ^
+  --hidden-import PyQt5.QtWebEngineWidgets ^
+  --hidden-import PyQt5.QtWebEngineCore ^
   --add-data "templates;templates" ^
   --add-data "static;static" ^
   --add-data "resources;resources" ^
   app.py
+if errorlevel 1 goto failed
+
+copy /y "start_portable_windows.bat" "dist\GidroRezhim\Start-GidroRezhim.bat" >nul
+if errorlevel 1 goto failed
+
 echo.
-echo Готово: dist\GidroRezhim\GidroRezhim.exe
-echo Ярлык с иконкой: создайте его на GidroRezhim.exe в проводнике Windows.
+echo Переносимая сборка готова: dist\GidroRezhim
+echo Скопируйте ВСЮ эту папку на Windows-компьютер. Python и Интернет там не нужны.
+echo Запуск: Start-GidroRezhim.bat или GidroRezhim.exe
 pause
+exit /b 0
+
+:failed
+echo.
+echo Сборка не завершена. Проверьте сообщение об ошибке выше.
+pause
+exit /b 1

@@ -5,9 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/static/vendor/leaflet.css">
   <style>
-    html,body,#map { width:100%;height:100%;margin:0;background:#e8eef2; }
+    html,body,#map { width:100%;height:100%;margin:0;background:#eaf0ef; }
     .leaflet-popup-content { line-height:1.55; }
     .leaflet-control-attribution { font-size:10px; }
+    .map-legend { background:rgba(255,255,255,.95); padding:9px 12px;
+      border:1px solid #c8d6d3; border-radius:8px; color:#344c49;
+      font:12px Segoe UI,Arial,sans-serif; box-shadow:0 2px 8px #0002; }
+    .legend-title { font-weight:700; margin-bottom:4px; }
+    .legend-item { white-space:nowrap; margin-top:3px; }
+    .legend-line { display:inline-block; width:19px; border-top:3px solid #258c9b;
+      margin:0 5px 3px 0; }
+    .legend-point { display:inline-block; width:9px; height:9px; border-radius:50%;
+      background:#1769aa; margin:0 10px 0 5px; }
+    .local-notice { background:rgba(255,255,255,.92); padding:4px 7px;
+      border-radius:5px; color:#526662; font:10px Segoe UI,Arial,sans-serif; }
   </style>
   <script src="/static/vendor/leaflet.js"></script>
 </head>
@@ -16,12 +27,43 @@
   <script>
     const stations = {{ stations|tojson }};
     const selectedStation = {{ selected_station|tojson }};
-    const map = L.map("map", {zoomControl:true}).setView({{ center|tojson }}, 5);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom:19,
-      attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
-    const bounds = [];
+    const overview = {{ overview|tojson }};
+    const map = L.map("map", {
+      zoomControl:true,
+      attributionControl:false
+    }).setView({{ center|tojson }}, 5);
+    const bounds = L.latLngBounds([]);
+    map.createPane("riverNetwork");
+    map.getPane("riverNetwork").style.zIndex = 350;
+    fetch("/map/data?overview=" + encodeURIComponent(overview))
+      .then(response => {
+        if (!response.ok) throw new Error("Не удалось загрузить локальную сеть рек");
+        return response.json();
+      })
+      .then(data => {
+        const riverLayer = L.geoJSON(data, {
+          pane:"riverNetwork",
+          style:feature => ({
+            color:feature.properties && feature.properties.kind &&
+              feature.properties.kind.toLowerCase().includes("главн") ? "#167e91" : "#62aeb5",
+            weight:feature.properties && feature.properties.kind &&
+              feature.properties.kind.toLowerCase().includes("главн") ? 3 : 1.5,
+            opacity:.9
+          }),
+          onEachFeature:(feature,layer) => {
+            const props = feature.properties || {};
+            if (props.river) layer.bindTooltip(props.river + (props.kind ? " · " + props.kind : ""));
+          }
+        }).addTo(map);
+        if (riverLayer.getBounds().isValid()) bounds.extend(riverLayer.getBounds());
+        addStations();
+      })
+      .catch(error => {
+        console.error(error);
+        addStations();
+      });
+
+    function addStations() {
     stations.forEach(function(station) {
       const selected = station.station_id === selectedStation;
       const kind = station.object_type === "hub" ? "Гидроузел" : "Гидропост";
@@ -53,9 +95,32 @@
           stationId:station.station_id
         },"*");
       });
-      bounds.push([station.lat,station.lon]);
+      bounds.extend([station.lat,station.lon]);
     });
-    if (bounds.length > 1) map.fitBounds(bounds,{padding:[36,36],maxZoom:8});
+    if (bounds.isValid()) map.fitBounds(bounds,{padding:[36,36],maxZoom:8});
+    }
+
+    const legend = L.control({position:"topright"});
+    legend.onAdd = function() {
+      const box = L.DomUtil.create("div","map-legend");
+      box.innerHTML = '<div class="legend-title">Локальная гидросеть</div>' +
+        '<div class="legend-item"><i class="legend-line"></i>реки и водотоки</div>' +
+        '<div class="legend-item"><i class="legend-point"></i>гидропост / гидроузел</div>';
+      L.DomEvent.disableClickPropagation(box);
+      return box;
+    };
+    legend.addTo(map);
+    const notice = L.control({position:"bottomleft"});
+    notice.onAdd = () => {
+      const box = L.DomUtil.create("div","local-notice");
+      box.textContent = "Офлайн-карта · русловые данные © OpenStreetMap contributors, ODbL";
+      return box;
+    };
+    notice.addTo(map);
+    L.control.scale({metric:true,imperial:false}).addTo(map);
+    L.control.attribution({prefix:false})
+      .addAttribution("Русловая сеть: © OpenStreetMap contributors (ODbL)")
+      .addTo(map);
   </script>
 </body>
 </html>

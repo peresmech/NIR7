@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import io
+import json
 import os
 import secrets
 import shutil
@@ -44,6 +45,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 BACKUP_DIR = DATA_DIR / "backups"
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 ICON_PATH = RESOURCES_DIR / "hydro-regime.ico"
+NETWORK_PATH = RESOURCES_DIR / "network_edges.geojson"
 
 SECRET_FILE = DATA_DIR / ".secret"
 if not SECRET_FILE.exists():
@@ -416,7 +418,27 @@ def map_page():
         stations=visible_rows,
         selected_station=station_id,
         center=center,
+        overview=overview,
     )
+
+
+@app.route("/map/data")
+@login_required
+def map_data():
+    if not NETWORK_PATH.is_file():
+        return {"type": "FeatureCollection", "features": []}
+    with NETWORK_PATH.open(encoding="utf-8") as file:
+        collection = json.load(file)
+    overview = request.args.get("overview", "all")
+    if overview in ("volga", "kama"):
+        river_name = {"volga": "Волга", "kama": "Кама"}[overview]
+        collection["features"] = [
+            feature
+            for feature in collection.get("features", [])
+            if feature.get("properties", {}).get("river") == river_name
+            or feature.get("properties", {}).get("parent") == river_name
+        ]
+    return collection
 
 
 @app.route("/plot")
@@ -1059,9 +1081,9 @@ def import_observations(path, station_id, parameter, quality_flag="unreviewed", 
         "lon": ("lon", "longitude", "долгота"),
         "object_type": ("object_type", "type", "тип"),
         "river_section": ("river_section", "section", "участок"),
-        "source_name": ("source_name", "istok", "исток"),
-        "source_type": ("source_type", "source_type", "источник"),
-        "source_note": ("source_note", "note", "ТП", "описание"),
+        "source_name": ("source_name", "источник данных", "организация"),
+        "source_type": ("source_type", "источник"),
+        "source_note": ("source_note", "note", "описание"),
         "source_istok": ("source_istok", "ИСТОК", "исток", "ISTOK"),
         "tp": ("tp", "ТП", "TП"),
         "unit": ("unit", "units", "единица измерения", "ед. изм."),
