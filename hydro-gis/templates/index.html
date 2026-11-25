@@ -18,7 +18,7 @@
     .tool-button { display:flex; align-items:center; gap:7px; border:1px solid #54718c;
       border-radius:8px; margin:0; padding:7px 10px; background:#27445f; color:white; cursor:pointer;
       white-space:nowrap; font-size:13px; flex:0 0 auto; }
-    .tools-bar > .tool-button { margin:0 7px; }
+    .tools-bar > * { margin:0 7px; }
     .tool-button:hover { background:#355a7b; }
     .tool-button svg { width:17px; height:17px; }
     .tool-select { border:1px solid #54718c; border-radius:8px; padding:7px 8px;
@@ -106,9 +106,12 @@
       box-shadow:0 1px 4px #18324a55; pointer-events:auto; cursor:ew-resize; }
     #dateError { display:none; margin:4px 0 0; color:#a83232; font-size:12px; }
     #dateError.visible { display:block; }
-    #compareDialog { position:fixed; z-index:80; inset:0; display:none; align-items:center;
-      justify-content:center; padding:20px; background:#10283db3; }
-    #compareDialog.open { display:flex; }
+    #compareDialog { position:relative; }
+    #compareDialog > summary { list-style:none; }
+    #compareDialog > summary::-webkit-details-marker { display:none; }
+    .compare-backdrop { position:fixed; z-index:80; inset:0; display:none;
+      place-items:center; padding:20px; box-sizing:border-box; background:#10283db3; }
+    #compareDialog[open] > .compare-backdrop { display:grid; }
     .compare-panel { width:min(620px,100%); max-height:90vh; display:flex; flex-direction:column;
       padding:20px; box-sizing:border-box; border-radius:14px; background:white;
       box-shadow:0 18px 60px #10283d55; }
@@ -188,10 +191,65 @@
       <button class="tool-button" id="summaryButton" title="Сводные показатели">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V5M4 19H21M8 15v-3m5 3V8m5 7V5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Показатели</span>
       </button>
-      <button class="tool-button" id="compareOpenButton" type="button" aria-controls="compareDialog"
-         title="Выбрать объекты для сравнения и экспорта">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 18V8m5 10V5m6 13v-7m5 7V3M2 18h20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Сравнить объекты</span>
-      </button>
+      <details id="compareDialog">
+        <summary class="tool-button" id="compareOpenButton" aria-controls="comparePanel"
+           title="Выбрать объекты для сравнения и экспорта">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 18V8m5 10V5m6 13v-7m5 7V3M2 18h20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Сравнить объекты</span>
+        </summary>
+        <div class="compare-backdrop">
+          <div id="comparePanel" class="compare-panel" role="dialog" aria-modal="true" aria-labelledby="compareTitle">
+            <div class="compare-heading">
+              <h2 id="compareTitle">Сравнение объектов</h2>
+              <button id="compareClose" type="button">Закрыть</button>
+            </div>
+            <p>Выберите минимум два объекта. Два гидроузла с данными по расходу уже отмечены.</p>
+            <form id="compareForm" action="/compare" method="get">
+              <label for="compareParameter">Показатель</label>
+              <select id="compareParameter" name="parameter">
+                <option value="discharge">Расход воды, м³/с</option>
+                <option value="level_upper">Уровень верхнего бьефа, м</option>
+                <option value="level_lower">Уровень нижнего бьефа, м</option>
+                <option value="level">Уровень воды, м</option>
+                <option value="level_upper_relative">Относительный уровень верхнего бьефа, см</option>
+                <option value="level_lower_relative">Относительный уровень нижнего бьефа, см</option>
+                <option value="level_relative">Относительный уровень на гидропосту, см</option>
+              </select>
+              <label for="compareSeries">Тип данных</label>
+              <select id="compareSeries" name="series_type">
+                <option value="observed">Фактические наблюдения</option>
+                <option value="forecast">Прогноз</option>
+              </select>
+              <div class="compare-dates">
+                <label for="compareFrom">С даты
+                  <input id="compareFrom" name="from" type="date" min="{{ date_min }}" max="{{ date_max }}" value="{{ date_min }}">
+                </label>
+                <label for="compareTo">По дату
+                  <input id="compareTo" name="to" type="date" min="{{ date_min }}" max="{{ date_max }}" value="{{ date_max }}">
+                </label>
+              </div>
+              <label for="compareSearch">Найти объект</label>
+              <input id="compareSearch" type="search" placeholder="Начните вводить название или реку">
+              <div id="compareStationList">
+                {% for s in stations %}
+                <label class="compare-station" data-name="{{ s.display_name|lower }}"
+                       data-river="{{ (s.river or 'Река не указана')|lower }}">
+                  <input class="compare-check" type="checkbox" name="station" value="{{ s.station_id }}"
+                    {% if s.station_id in comparison_defaults[:2] %}checked{% endif %}>
+                  <span>{{ s.display_name }} · {{ s.river or "Река не указана" }}</span>
+                </label>
+                {% endfor %}
+              </div>
+              <p id="compareError" role="alert"></p>
+              <div class="compare-actions">
+                <span id="compareCount">Выбрано: {{ comparison_defaults|length }}</span>
+                <button id="exportButton" type="submit" formaction="/export/table">Скачать CSV</button>
+                <button id="annualButton" type="submit" name="mode" value="annual">Сравнить по годам</button>
+                <button class="primary" id="compareButton" type="submit" name="mode" value="timeseries">Сравнить по датам</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </details>
       {% if is_admin %}
       <a class="tool-button" href="/admin/audit" title="Журнал действий">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Журнал</span>
@@ -267,57 +325,6 @@
       </div>
     </section>
   </main>
-  <div id="compareDialog" role="dialog" aria-modal="true" aria-labelledby="compareTitle">
-    <div class="compare-panel">
-      <div class="compare-heading">
-        <h2 id="compareTitle">Сравнение объектов</h2>
-        <button id="compareClose" type="button">Закрыть</button>
-      </div>
-      <p>Выберите минимум два объекта. Два гидроузла с данными по расходу уже отмечены.</p>
-      <label for="compareParameter">Показатель</label>
-      <select id="compareParameter">
-        <option value="discharge">Расход воды, м³/с</option>
-        <option value="level_upper">Уровень верхнего бьефа, м</option>
-        <option value="level_lower">Уровень нижнего бьефа, м</option>
-        <option value="level">Уровень воды, м</option>
-        <option value="level_upper_relative">Относительный уровень верхнего бьефа, см</option>
-        <option value="level_lower_relative">Относительный уровень нижнего бьефа, см</option>
-        <option value="level_relative">Относительный уровень на гидропосту, см</option>
-      </select>
-      <label for="compareSeries">Тип данных</label>
-      <select id="compareSeries">
-        <option value="observed">Фактические наблюдения</option>
-        <option value="forecast">Прогноз</option>
-      </select>
-      <div class="compare-dates">
-        <label for="compareFrom">С даты
-          <input id="compareFrom" type="date" min="{{ date_min }}" max="{{ date_max }}" value="{{ date_min }}">
-        </label>
-        <label for="compareTo">По дату
-          <input id="compareTo" type="date" min="{{ date_min }}" max="{{ date_max }}" value="{{ date_max }}">
-        </label>
-      </div>
-      <label for="compareSearch">Найти объект</label>
-      <input id="compareSearch" type="search" placeholder="Начните вводить название или реку">
-      <div id="compareStationList">
-        {% for s in stations %}
-        <label class="compare-station" data-name="{{ s.display_name|lower }}"
-               data-river="{{ (s.river or 'Река не указана')|lower }}">
-          <input class="compare-check" type="checkbox" value="{{ s.station_id }}"
-            {% if s.station_id in comparison_defaults[:2] %}checked{% endif %}>
-          <span>{{ s.display_name }} · {{ s.river or "Река не указана" }}</span>
-        </label>
-        {% endfor %}
-      </div>
-      <p id="compareError" role="alert"></p>
-      <div class="compare-actions">
-        <span id="compareCount">Выбрано: 0</span>
-        <button id="exportButton" type="button">Скачать CSV</button>
-        <button id="annualButton" type="button">Сравнить по годам</button>
-        <button class="primary" id="compareButton" type="button">Сравнить по датам</button>
-      </div>
-    </div>
-  </div>
   <div id="stationContextMenu" class="station-context-menu" role="menu" hidden>
     {% if is_admin %}
     <button id="editStationMenuItem" type="button" role="menuitem">
@@ -563,16 +570,12 @@
     }
     compareChecks.forEach(input => input.addEventListener("change", updateCompareCount));
     updateCompareCount();
-    document.getElementById("compareOpenButton").addEventListener("click", function() {
-      compareDialog.classList.add("open");
-      document.getElementById("compareSearch").focus();
-    });
     function closeCompareDialog() {
-      compareDialog.classList.remove("open");
+      compareDialog.open = false;
     }
     document.getElementById("compareClose").addEventListener("click", closeCompareDialog);
-    compareDialog.addEventListener("click", function(event) {
-      if (event.target === compareDialog) closeCompareDialog();
+    compareDialog.querySelector(".compare-backdrop").addEventListener("click", function(event) {
+      if (event.target === this) closeCompareDialog();
     });
     document.getElementById("compareSearch").addEventListener("input", function() {
       const query = this.value.trim().toLocaleLowerCase("ru");
@@ -615,23 +618,14 @@
       closeCompareDialog();
       openChart(title, url, url + "&download=1");
     }
-    document.getElementById("compareButton").addEventListener("click", function() {
-      showComparison("timeseries", "Сравнение объектов");
-    });
-    document.getElementById("annualButton").addEventListener("click", function() {
-      showComparison("annual", "Межгодовая динамика");
-    });
-    document.getElementById("exportButton").addEventListener("click", function() {
-      const stationIds = selectedForAnalysis();
-      if (!stationIds.length) return;
-      const params = new URLSearchParams({
-        parameter: document.getElementById("compareParameter").value,
-        series_type: document.getElementById("compareSeries").value,
-        from: document.getElementById("compareFrom").value,
-        to: document.getElementById("compareTo").value
-      });
-      stationIds.forEach(id => params.append("station", id));
-      window.location.href = "/export/table?" + params.toString();
+    document.getElementById("compareForm").addEventListener("submit", function(event) {
+      if (event.submitter === document.getElementById("exportButton")) return;
+      event.preventDefault();
+      const mode = event.submitter.value;
+      showComparison(
+        mode,
+        mode === "annual" ? "Межгодовая динамика" : "Сравнение объектов"
+      );
     });
     document.addEventListener("keydown", function(event) {
       if (event.key !== "Escape") return;
