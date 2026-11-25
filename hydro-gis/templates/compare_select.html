@@ -23,11 +23,12 @@
     .station:last-child { border-bottom:0; }
     .station input { width:17px; height:17px; accent-color:#1769aa; }
     .station small { display:block; margin-top:3px; color:#63788d; }
-    .buttons { display:flex; flex-wrap:wrap; gap:14px; margin-top:18px; }
+    .buttons { display:flex; flex-wrap:wrap; gap:18px; margin-top:18px; }
     button,.back { display:inline-flex; align-items:center; justify-content:center;
-      min-height:42px; padding:9px 16px; border:1px solid #c5d3e2; border-radius:8px;
+      min-height:42px; margin:0; padding:9px 16px; border:1px solid #c5d3e2; border-radius:8px;
       background:#edf4fa; color:#1769aa; font:inherit; text-decoration:none; cursor:pointer; }
     button.primary { border-color:#1769aa; background:#1769aa; color:white; }
+    .error { padding:10px 12px; border-radius:7px; background:#fff0ee; color:#a83232; }
     @media(max-width:560px) {
       body { padding:10px; }
       main { padding:16px; }
@@ -38,8 +39,10 @@
 <body>
   <main>
     <h1>Сравнение объектов</h1>
-    <p>Поставьте галочки слева от названий. Выберите минимум два объекта, затем
-      укажите показатель и нажмите одну из кнопок построения.</p>
+    <p>Поставьте галочки слева от названий. Два объекта с данными по расходу
+      уже выбраны. Проверьте выбор, задайте показатель и период, затем нажмите
+      нужную кнопку.</p>
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
     <form action="/compare" method="get">
       <div class="settings">
         <label>Показатель
@@ -55,6 +58,12 @@
             <option value="forecast">Прогноз</option>
           </select>
         </label>
+        <label>С даты
+          <input type="date" name="from" min="{{ date_min }}" max="{{ date_max }}" value="{{ date_min }}">
+        </label>
+        <label>По дату
+          <input type="date" name="to" min="{{ date_min }}" max="{{ date_max }}" value="{{ date_max }}">
+        </label>
       </div>
       <fieldset>
         <legend>Объекты для сравнения</legend>
@@ -65,7 +74,7 @@
               {% if station.station_id in default_stations %}checked{% endif %}>
             <span>{{ station.display_name }}
               <small>{{ station.river or "Река не указана" }}
-                {% if station.observation_count %} · есть фактические данные{% endif %}
+                {% if station.observation_count %} · есть данные{% else %} · данных пока нет{% endif %}
               </small>
             </span>
           </label>
@@ -77,6 +86,7 @@
           Сравнить по датам
         </button>
         <button type="submit" name="mode" value="annual">Сравнить по годам</button>
+        <button type="submit" formaction="/export/table">Скачать CSV</button>
         <a class="back" href="/">Вернуться к карте</a>
       </div>
     </form>

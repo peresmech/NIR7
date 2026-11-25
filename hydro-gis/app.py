@@ -580,17 +580,6 @@ def index():
         ORDER BY region, display_name
         """
     ).fetchall()
-    comparison_defaults = [
-        row["station"]
-        for row in con.execute(
-            """
-            SELECT DISTINCT station
-            FROM observations
-            WHERE parameter='discharge' AND series_type='observed'
-            ORDER BY station
-            """
-        )
-    ]
     date_bounds = con.execute(
         "SELECT MIN(substr(date,1,10)) AS first_date, "
         "MAX(substr(date,1,10)) AS last_date FROM observations"
@@ -610,7 +599,6 @@ def index():
         "index.html",
         stations=stations,
         all_stations=stations,
-        comparison_defaults=comparison_defaults,
         station_groups=station_groups,
         username=current_user(),
         is_admin=is_admin(),
@@ -933,7 +921,7 @@ def compare():
         station_ids = request.args.get("stations", "").split(",")
     station_ids = list(dict.fromkeys(item for item in station_ids if item))
     if len(station_ids) < 2:
-        return "Для сравнения выберите не менее двух объектов", 400
+        return redirect(url_for("compare_select", error="Отметьте минимум два объекта."))
     parameter = request.args.get("parameter", "discharge")
     series_type = request.args.get("series_type", "observed")
     mode = request.args.get("mode", "timeseries")
@@ -1015,9 +1003,7 @@ def compare():
     return send_file(output, mimetype="image/png")
 
 
-@app.route("/compare-select")
-@login_required
-def compare_select():
+def render_compare_selector(error=None):
     con = connect_db()
     stations = con.execute(
         """
@@ -1050,13 +1036,26 @@ def compare_select():
             """
         )
     ]
+    date_bounds = con.execute(
+        "SELECT MIN(substr(date,1,10)) AS first_date, "
+        "MAX(substr(date,1,10)) AS last_date FROM observations"
+    ).fetchone()
     con.close()
     return render_template(
         "compare_select.html",
         stations=stations,
         parameters=parameters,
         default_stations=default_stations,
+        date_min=date_bounds["first_date"] or "",
+        date_max=date_bounds["last_date"] or "",
+        error=error,
     )
+
+
+@app.route("/compare-select")
+@login_required
+def compare_select():
+    return render_compare_selector(request.args.get("error"))
 
 
 @app.route("/admin/backup", methods=["POST"])

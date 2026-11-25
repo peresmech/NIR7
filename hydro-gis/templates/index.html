@@ -13,7 +13,7 @@
     .brand img { width:32px; height:32px; }
     .brand-title { font-weight:700; font-size:17px; }
     .tools-bar { display:flex; align-items:center; justify-content:center;
-      column-gap:15px; flex:1; min-width:0; }
+      column-gap:24px; flex:1; min-width:0; }
     .tools-bar a { text-decoration:none; }
     .tool-button { display:flex; align-items:center; gap:7px; border:1px solid #54718c;
       border-radius:8px; margin:0; padding:7px 10px; background:#27445f; color:white; cursor:pointer;
@@ -104,33 +104,6 @@
       box-shadow:0 1px 4px #18324a55; pointer-events:auto; cursor:ew-resize; }
     #dateError { display:none; margin:4px 0 0; color:#a83232; font-size:12px; }
     #dateError.visible { display:block; }
-    #compareDialog { position:fixed; z-index:80; inset:0; display:none; align-items:center;
-      justify-content:center; padding:20px; background:#10283db3; }
-    #compareDialog.open { display:flex; }
-    .compare-panel { width:min(580px,100%); max-height:90vh; display:flex; flex-direction:column;
-      padding:20px; box-sizing:border-box; border-radius:14px; background:white;
-      box-shadow:0 18px 60px #10283d55; }
-    .compare-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; }
-    .compare-heading h2 { margin:0; font-size:20px; color:#18324a; }
-    .compare-heading button,.compare-actions button { padding:8px 12px; border:1px solid #cbd8e5;
-      border-radius:7px; color:#18324a; background:white; cursor:pointer; }
-    .compare-panel label { margin-top:12px; color:#52677b; font-size:13px; }
-    .compare-panel select,.compare-panel input[type=search] { box-sizing:border-box; width:100%;
-      margin-top:5px; padding:10px; border:1px solid #cbd8e5; border-radius:8px; background:white; }
-    #compareStationList { overflow:auto; min-height:120px; max-height:36vh; margin-top:8px;
-      border:1px solid #d9e3ed; border-radius:8px; }
-    .compare-station { display:flex; align-items:center; gap:9px; padding:9px 11px;
-      margin:0!important; border-bottom:1px solid #edf1f5; color:#26384a!important; cursor:pointer; }
-    .compare-station:last-child { border-bottom:0; }
-    .compare-station input { accent-color:#1769aa; }
-    .compare-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
-      gap:12px; margin-top:14px; }
-    .compare-actions button { min-height:40px; margin:0; line-height:1.25; white-space:normal; }
-    .compare-actions button:disabled { cursor:not-allowed; opacity:.5; }
-    #compareCount { grid-column:1/-1; color:#63788d; font-size:13px; }
-    #compareError { display:none; margin:9px 0 0; color:#a83232; font-size:13px; }
-    #compareError.visible { display:block; }
-    .compare-actions .primary { border-color:#1769aa; color:white; background:#1769aa; }
     .modal-backdrop { position:fixed; z-index:90; inset:0; display:none; align-items:center;
       justify-content:center; padding:16px; background:#10283db3; }
     .modal-backdrop.open { display:flex; }
@@ -168,10 +141,6 @@
       main { grid-template-columns:230px 1fr; }
       #chartOverlay { width:calc(100% - 16px); height:calc(100% - 16px); }
       .date-date-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
-    }
-    @media (max-width:520px) {
-      .compare-actions { grid-template-columns:1fr; }
-      #compareCount { grid-column:1; }
     }
   </style>
 </head>
@@ -325,55 +294,10 @@
     </form>
   </div>
   {% endif %}
-  <div id="compareDialog" role="dialog" aria-modal="true" aria-labelledby="compareTitle">
-    <div class="compare-panel">
-      <div class="compare-heading">
-        <h2 id="compareTitle">Сравнение объектов</h2>
-        <button id="compareClose" type="button" aria-label="Закрыть">Закрыть</button>
-      </div>
-      <p>Для быстрого старта выбраны два объекта с данными по расходу. Отметьте не менее
-        двух объектов с данными по выбранному показателю и периоду.</p>
-      <label for="compareParameter">Показатель</label>
-      <select id="compareParameter">
-        <option value="discharge">Расход воды, м³/с</option>
-        <option value="level_upper">Уровень верхнего бьефа, м</option>
-        <option value="level_lower">Уровень нижнего бьефа, м</option>
-        <option value="level">Уровень воды, м</option>
-        <option value="level_upper_relative">Относительный уровень верхнего бьефа, см</option>
-        <option value="level_lower_relative">Относительный уровень нижнего бьефа, см</option>
-        <option value="level_relative">Относительный уровень на гидропосту, см</option>
-      </select>
-      <label for="compareSeries">Тип ряда</label>
-      <select id="compareSeries">
-        <option value="observed">Фактические наблюдения</option>
-        <option value="forecast">Прогноз</option>
-      </select>
-      <label for="compareSearch">Найти гидроузел или гидропост</label>
-      <input id="compareSearch" type="search" placeholder="Начните вводить название">
-      <div id="compareStationList">
-        {% for s in stations %}
-        <label class="compare-station" data-name="{{ s.display_name|lower }}"
-               data-river="{{ (s.river or 'Река не указана')|lower }}">
-          <input class="compare-check" type="checkbox" value="{{ s.station_id }}">
-          <span>{{ s.display_name }} · {{ s.river or "Река не указана" }}</span>
-        </label>
-        {% endfor %}
-      </div>
-      <p id="compareError" role="alert"></p>
-      <div class="compare-actions">
-        <span id="compareCount">Выбрано: 0</span>
-        <button id="exportButton" type="button">Скачать таблицу CSV</button>
-        <button id="annualButton" type="button">По годам</button>
-        <button class="primary" id="compareButton" type="button">Построить сравнение</button>
-      </div>
-    </div>
-  </div>
   <script>
     let selected = null;
     let chartUpdateTimer = null;
     const stations = document.querySelectorAll(".station");
-    const compareChecks = document.querySelectorAll(".compare-check");
-    const defaultCompareStations = {{ comparison_defaults|tojson }};
     const dateMin = new Date("{{ date_min }}T00:00:00Z");
     const dayMilliseconds = 24 * 60 * 60 * 1000;
     const thumbParameters = [
@@ -673,100 +597,13 @@
       );
       if (station) station.click();
     });
-    function selectedForAnalysis() {
-      return Array.from(document.querySelectorAll(".compare-check:checked"))
-        .map(input => input.value);
-    }
-    function updateCompareCount() {
-      const count = selectedForAnalysis().length;
-      document.getElementById("compareCount").textContent = "Выбрано: " + count;
-      document.getElementById("compareButton").disabled = count < 2;
-      document.getElementById("annualButton").disabled = count < 2;
-      const error = document.getElementById("compareError");
-      error.textContent = "";
-      error.classList.remove("visible");
-    }
-    compareChecks.forEach(input => input.addEventListener("change", updateCompareCount));
-    document.getElementById("compareOpenButton").addEventListener("click", function(event) {
-      event.preventDefault();
-      const candidates = [
-        ...(selected ? [selected] : []),
-        ...defaultCompareStations
-      ];
-      for (const id of candidates) {
-        if (selectedForAnalysis().length >= 2) break;
-        const choice = Array.from(compareChecks).find(input => input.value === id);
-        if (choice) choice.checked = true;
-      }
-      updateCompareCount();
-      document.getElementById("compareDialog").classList.add("open");
-      document.getElementById("compareSearch").focus();
-    });
-    function closeCompareDialog() {
-      document.getElementById("compareDialog").classList.remove("open");
-    }
-    document.getElementById("compareClose").addEventListener("click", closeCompareDialog);
-    document.getElementById("compareDialog").addEventListener("click", function(event) {
-      if (event.target === this) closeCompareDialog();
-    });
-    document.getElementById("compareSearch").addEventListener("input", function() {
-      const query = this.value.trim().toLocaleLowerCase("ru");
-      document.querySelectorAll(".compare-station").forEach(function(item) {
-        item.hidden = !(`${item.dataset.name} ${item.dataset.river}`).includes(query);
-      });
-    });
-    function comparisonUrl(mode) {
-      const stationIds = selectedForAnalysis();
-      if (stationIds.length < 2) {
-        const error = document.getElementById("compareError");
-        error.textContent = "Для сравнения отметьте не менее двух объектов.";
-        error.classList.add("visible");
-        return null;
-      }
-      const params = new URLSearchParams({
-        stations: stationIds.join(","),
-        parameter: document.getElementById("compareParameter").value,
-        series_type: document.getElementById("compareSeries").value,
-        mode: mode,
-        from: document.getElementById("dateFrom").value,
-        to: document.getElementById("dateTo").value
-      });
-      return "/compare?" + params.toString();
-    }
-    document.getElementById("compareButton").addEventListener("click", function() {
-      const url = comparisonUrl("timeseries");
-      if (url) {
-        closeCompareDialog();
-        openChart("Сравнение объектов", url, url + "&download=1");
-      }
-    });
-    document.getElementById("annualButton").addEventListener("click", function() {
-      const url = comparisonUrl("annual");
-      if (url) {
-        closeCompareDialog();
-        openChart("Межгодовая динамика", url, url + "&download=1");
-      }
-    });
     document.getElementById("summaryButton").addEventListener("click", function() {
       if (!selected) { alert("Выберите объект из списка или на карте"); return; }
-      const params = chartParams(document.getElementById("compareParameter").value);
+      const params = chartParams("discharge");
       openChart("Сводные показатели", "/summary?" + params.toString());
-    });
-    document.getElementById("exportButton").addEventListener("click", function() {
-      const ids = selectedForAnalysis();
-      if (!ids.length) { alert("Выберите объект в списке сравнения"); return; }
-      const params = new URLSearchParams({
-        parameter: document.getElementById("compareParameter").value,
-        series_type: document.getElementById("compareSeries").value,
-        from: document.getElementById("dateFrom").value,
-        to: document.getElementById("dateTo").value
-      });
-      ids.forEach(id => params.append("station", id));
-      window.location.href = "/export/table?" + params.toString();
     });
     document.addEventListener("keydown", function(event) {
       if (event.key === "Escape") {
-        closeCompareDialog();
         closeStationContextMenu();
       }
     });
