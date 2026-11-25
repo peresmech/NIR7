@@ -13,11 +13,11 @@
     .brand img { width:32px; height:32px; }
     .brand-title { font-weight:700; font-size:17px; }
     .tools-bar { display:flex; align-items:center; justify-content:center;
-      gap:28px; flex:1; }
+      gap:40px; flex:1; min-width:0; }
     .tools-bar a { text-decoration:none; }
     .tool-button { display:flex; align-items:center; gap:7px; border:1px solid #54718c;
       border-radius:8px; margin:0; padding:7px 10px; background:#27445f; color:white; cursor:pointer;
-      white-space:nowrap; font-size:13px; }
+      white-space:nowrap; font-size:13px; flex:0 0 auto; }
     .tool-button:hover { background:#355a7b; }
     .tool-button svg { width:17px; height:17px; }
     .tool-select { border:1px solid #54718c; border-radius:8px; padding:7px 8px;
@@ -126,6 +126,7 @@
     .compare-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
       gap:12px; margin-top:14px; }
     .compare-actions button { min-height:40px; margin:0; line-height:1.25; white-space:normal; }
+    .compare-actions button:disabled { cursor:not-allowed; opacity:.5; }
     #compareCount { grid-column:1/-1; color:#63788d; font-size:13px; }
     #compareError { display:none; margin:9px 0 0; color:#a83232; font-size:13px; }
     #compareError.visible { display:block; }
@@ -146,6 +147,15 @@
     .editor-panel .editor-save { background:#1769aa; color:white; }
     .editor-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 10px; }
     .editor-note { color:#63788d; font-size:12px; line-height:1.45; }
+    .station-context-menu { position:fixed; z-index:100; min-width:220px; padding:5px;
+      border:1px solid #cbd8e5; border-radius:8px; background:white;
+      box-shadow:0 8px 24px #18324a33; }
+    .station-context-menu[hidden] { display:none; }
+    .station-context-menu button { width:100%; padding:9px 11px; border:0; border-radius:5px;
+      background:white; color:#18324a; text-align:left; cursor:pointer; }
+    .station-context-menu button:hover { background:#eaf2f9; }
+    .station-context-menu .context-note { margin:0; padding:8px 10px;
+      color:#52677b; font-size:12px; }
     .map-error { position:absolute; z-index:500; left:50%; top:50%; transform:translate(-50%,-50%);
       max-width:360px; padding:14px 18px; border:1px solid #d4dfeb; border-radius:10px;
       background:#fffffff2; color:#18324a; box-shadow:0 5px 20px #18324a22;
@@ -195,7 +205,7 @@
       <input id="search" placeholder="Название">
       <h3>Объекты</h3>
       <small>Список сгруппирован по областям и регионам.
-        {% if is_admin %}Правый клик по объекту открывает редактор.{% endif %}</small>
+        {% if is_admin %}Нажмите объект правой кнопкой и выберите редактирование, чтобы указать регион и координаты.{% else %}Регион и координаты изменяет администратор.{% endif %}</small>
       <div id="stations">
         {% for group_name, group_stations in station_groups.items() %}
         <section class="station-group">
@@ -256,6 +266,15 @@
       </div>
     </section>
   </main>
+  <div id="stationContextMenu" class="station-context-menu" role="menu" hidden>
+    {% if is_admin %}
+    <button id="editStationMenuItem" type="button" role="menuitem">
+      Изменить регион и координаты…
+    </button>
+    {% else %}
+    <p class="context-note" role="menuitem">Изменение региона и координат доступно администратору.</p>
+    {% endif %}
+  </div>
   {% if is_admin %}
   <div id="stationEditor" class="modal-backdrop" role="dialog" aria-modal="true"
        aria-labelledby="stationEditorTitle">
@@ -311,8 +330,8 @@
         <h2 id="compareTitle">Сравнение объектов</h2>
         <button id="compareClose" type="button" aria-label="Закрыть">Закрыть</button>
       </div>
-      <p>Для быстрого старта выбраны два объекта с данными по расходу. Измените выбор,
-        если нужно сравнить другие станции.</p>
+      <p>Для быстрого старта выбраны два объекта с данными по расходу. Отметьте не менее
+        двух объектов с данными по выбранному показателю и периоду.</p>
       <label for="compareParameter">Показатель</label>
       <select id="compareParameter">
         <option value="discharge">Расход воды, м³/с</option>
@@ -529,6 +548,27 @@
       document.getElementById("mapFrame").src =
         "/map" + (selected ? "?station=" + encodeURIComponent(selected) : "");
     }
+    const stationContextMenu = document.getElementById("stationContextMenu");
+    let contextStation = null;
+    function closeStationContextMenu() {
+      stationContextMenu.hidden = true;
+    }
+    stations.forEach(function(station) {
+      station.addEventListener("contextmenu", function(event) {
+        event.preventDefault();
+        contextStation = station;
+        stationContextMenu.hidden = false;
+        stationContextMenu.style.left =
+          Math.max(8, Math.min(event.clientX,
+            window.innerWidth - stationContextMenu.offsetWidth - 8)) + "px";
+        stationContextMenu.style.top =
+          Math.max(8, Math.min(event.clientY,
+            window.innerHeight - stationContextMenu.offsetHeight - 8)) + "px";
+      });
+    });
+    document.addEventListener("pointerdown", function(event) {
+      if (!stationContextMenu.contains(event.target)) closeStationContextMenu();
+    });
     {% if is_admin %}
     const stationEditor = document.getElementById("stationEditor");
     const editorFields = {
@@ -572,11 +612,9 @@
         "Объект: " + station.dataset.name;
       stationEditor.classList.add("open");
     }
-    stations.forEach(function(station) {
-      station.addEventListener("contextmenu", function(event) {
-        event.preventDefault();
-        openStationEditor(station);
-      });
+    document.getElementById("editStationMenuItem").addEventListener("click", function() {
+      closeStationContextMenu();
+      if (contextStation) openStationEditor(contextStation);
     });
     document.getElementById("stationEditorClose").addEventListener("click", function() {
       stationEditor.classList.remove("open");
@@ -641,6 +679,8 @@
     function updateCompareCount() {
       const count = selectedForAnalysis().length;
       document.getElementById("compareCount").textContent = "Выбрано: " + count;
+      document.getElementById("compareButton").disabled = count < 2;
+      document.getElementById("annualButton").disabled = count < 2;
       const error = document.getElementById("compareError");
       error.textContent = "";
       error.classList.remove("visible");
@@ -723,7 +763,10 @@
       window.location.href = "/export/table?" + params.toString();
     });
     document.addEventListener("keydown", function(event) {
-      if (event.key === "Escape") closeCompareDialog();
+      if (event.key === "Escape") {
+        closeCompareDialog();
+        closeStationContextMenu();
+      }
     });
   </script>
 </body>
