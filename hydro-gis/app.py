@@ -31,6 +31,118 @@ import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter, MonthLocator, YearLocator
 
 
+REGIONS = tuple(
+    sorted(
+        (
+            "Алтайский край",
+            "Амурская область",
+            "Архангельская область",
+            "Астраханская область",
+            "Белгородская область",
+            "Брянская область",
+            "Владимирская область",
+            "Волгоградская область",
+            "Вологодская область",
+            "Воронежская область",
+            "Город Москва",
+            "Город Санкт-Петербург",
+            "Город Севастополь",
+            "Донецкая Народная Республика",
+            "Еврейская автономная область",
+            "Забайкальский край",
+            "Запорожская область",
+            "Ивановская область",
+            "Иркутская область",
+            "Кабардино-Балкарская Республика",
+            "Калининградская область",
+            "Калужская область",
+            "Камчатский край",
+            "Карачаево-Черкесская Республика",
+            "Кемеровская область — Кузбасс",
+            "Кировская область",
+            "Костромская область",
+            "Краснодарский край",
+            "Красноярский край",
+            "Курганская область",
+            "Курская область",
+            "Ленинградская область",
+            "Липецкая область",
+            "Луганская Народная Республика",
+            "Магаданская область",
+            "Московская область",
+            "Мурманская область",
+            "Ненецкий автономный округ",
+            "Нижегородская область",
+            "Новгородская область",
+            "Новосибирская область",
+            "Омская область",
+            "Оренбургская область",
+            "Орловская область",
+            "Пензенская область",
+            "Пермский край",
+            "Приморский край",
+            "Псковская область",
+            "Республика Адыгея",
+            "Республика Алтай",
+            "Республика Башкортостан",
+            "Республика Бурятия",
+            "Республика Дагестан",
+            "Республика Ингушетия",
+            "Республика Калмыкия",
+            "Республика Карелия",
+            "Республика Коми",
+            "Республика Крым",
+            "Республика Марий Эл",
+            "Республика Мордовия",
+            "Республика Саха (Якутия)",
+            "Республика Северная Осетия — Алания",
+            "Республика Татарстан",
+            "Республика Тыва",
+            "Республика Хакасия",
+            "Чеченская Республика",
+            "Чувашская Республика",
+            "Ростовская область",
+            "Рязанская область",
+            "Самарская область",
+            "Саратовская область",
+            "Сахалинская область",
+            "Свердловская область",
+            "Смоленская область",
+            "Ставропольский край",
+            "Тамбовская область",
+            "Тверская область",
+            "Томская область",
+            "Тульская область",
+            "Тюменская область",
+            "Удмуртская Республика",
+            "Ульяновская область",
+            "Хабаровский край",
+            "Ханты-Мансийский автономный округ — Югра",
+            "Херсонская область",
+            "Челябинская область",
+            "Чукотский автономный округ",
+            "Ямало-Ненецкий автономный округ",
+            "Ярославская область",
+        ),
+        key=lambda region: region.casefold().replace("ё", "е"),
+    )
+)
+
+
+def canonical_region(value):
+    if not value:
+        return None
+    key = " ".join(value.casefold().replace("ё", "е").split())
+    return next(
+        (
+            region
+            for region in REGIONS
+            if " ".join(region.casefold().replace("ё", "е").split()) == key
+        ),
+        None,
+    )
+
+
 if getattr(sys, "frozen", False):
     APP_DIR = Path(sys.executable).resolve().parent
     PROJECT_DIR = Path(sys._MEIPASS)
@@ -62,6 +174,11 @@ app.secret_key = SECRET_FILE.read_text(encoding="utf-8")
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+
+@app.context_processor
+def inject_regions():
+    return {"regions": REGIONS}
 
 
 def connect_db():
@@ -307,6 +424,14 @@ def init_database():
                     getattr(row, "region", ""),
                     int(getattr(row, "sort_order")),
                 ),
+            )
+
+    for row in con.execute("SELECT station_id,region FROM stations WHERE region IS NOT NULL"):
+        normalized_region = canonical_region(row["region"])
+        if normalized_region and normalized_region != row["region"]:
+            con.execute(
+                "UPDATE stations SET region=? WHERE station_id=?",
+                (normalized_region, row["station_id"]),
             )
 
     con.execute(
@@ -986,12 +1111,15 @@ def admin():
             error = "За один раз можно загрузить не более 100 файлов"
         else:
             shared_name = request.form.get("shared_station_name", "").strip()
-            shared_region = request.form.get("shared_region", "").strip() or None
+            shared_region_text = request.form.get("shared_region", "").strip()
+            shared_region = canonical_region(shared_region_text)
             shared_object_type = request.form.get("shared_object_type", "").strip()
             latitude_text = request.form.get("shared_lat", "").strip()
             longitude_text = request.form.get("shared_lon", "").strip()
             if bool(latitude_text) != bool(longitude_text):
                 error = "Для координат укажите и широту, и долготу."
+            elif shared_region_text and not shared_region:
+                error = "Выберите область или регион из справочника."
             elif shared_object_type not in ("", "hub", "post"):
                 error = "Неизвестный тип объекта."
 
@@ -1092,6 +1220,9 @@ def create_station():
     display_name = request.form.get("display_name", "").strip()
     river = request.form.get("river", "").strip()
     region = request.form.get("region", "").strip()
+    region = canonical_region(region)
+    if request.form.get("region", "").strip() and not region:
+        return "Выберите область или регион из справочника.", 400
     lat = request.form.get("lat", "").strip()
     lon = request.form.get("lon", "").strip()
     object_type = request.form.get("object_type", "hub").strip()
@@ -1555,7 +1686,13 @@ def import_observations(
         if region_column:
             region_name = (row.get(region_column) or "").strip()
             if region_name:
-                regions_found.add(region_name)
+                canonical_name = canonical_region(region_name)
+                if not canonical_name:
+                    raise ValueError(
+                        f"Регион «{region_name}» не найден в справочнике. "
+                        "Выберите его в поле региона при импорте."
+                    )
+                regions_found.add(canonical_name)
         date_text = parse_date(row.get(date_column))
         for column, parameter, kind in series:
             value = parse_value(row.get(column))

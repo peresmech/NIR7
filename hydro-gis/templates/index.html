@@ -270,7 +270,12 @@
       <div class="editor-grid">
         <label>Река<input name="river" id="editRiver"></label>
         <label>Участок реки<input name="river_section" id="editRiverSection"></label>
-        <label>Область / регион<input name="region" id="editRegion"></label>
+        <label>Область / регион
+          <select name="region" id="editRegion">
+            <option value="">Не указана</option>
+            {% for region in regions %}<option value="{{ region }}">{{ region }}</option>{% endfor %}
+          </select>
+        </label>
         <label>Широта<input name="lat" id="editLatitude" type="number" step="any" required></label>
         <label>Долгота<input name="lon" id="editLongitude" type="number" step="any" required></label>
       </div>

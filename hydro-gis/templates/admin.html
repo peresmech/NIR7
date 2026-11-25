@@ -47,7 +47,10 @@
         </select>
         <input id="sharedLat" name="shared_lat" type="number" step="any" placeholder="Широта">
         <input id="sharedLon" name="shared_lon" type="number" step="any" placeholder="Долгота">
-        <input name="shared_region" placeholder="Область или регион">
+        <select name="shared_region" aria-label="Область или регион общей точки">
+          <option value="">Область или регион (необязательно)</option>
+          {% for region in regions %}<option value="{{ region }}">{{ region }}</option>{% endfor %}
+        </select>
         <button id="sharedMapButton" type="button">Выбрать точку на карте</button>
       </div>
       <iframe id="sharedMapPicker" class="map-picker" title="Выбор координат общей точки"
@@ -104,7 +107,10 @@
       <input name="station_id" placeholder="Код объекта" required>
       <input name="display_name" placeholder="Название" required>
       <input name="river" placeholder="Река">
-      <input name="region" placeholder="Область или регион">
+      <select name="region" aria-label="Область или регион">
+        <option value="">Область или регион</option>
+        {% for region in regions %}<option value="{{ region }}">{{ region }}</option>{% endfor %}
+      </select>
       <input name="lat" type="number" step="0.000001" placeholder="Широта" required>
       <input name="lon" type="number" step="0.000001" placeholder="Долгота" required>
       <select name="object_type">
