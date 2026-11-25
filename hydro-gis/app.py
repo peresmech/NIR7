@@ -580,6 +580,19 @@ def index():
         ORDER BY region, display_name
         """
     ).fetchall()
+    comparison_defaults = [
+        row["station"]
+        for row in con.execute(
+            """
+            SELECT station
+            FROM observations
+            WHERE parameter='discharge' AND series_type='observed'
+            GROUP BY station
+            ORDER BY station
+            LIMIT 2
+            """
+        )
+    ]
     date_bounds = con.execute(
         "SELECT MIN(substr(date,1,10)) AS first_date, "
         "MAX(substr(date,1,10)) AS last_date FROM observations"
@@ -599,6 +612,7 @@ def index():
         "index.html",
         stations=stations,
         all_stations=stations,
+        comparison_defaults=comparison_defaults,
         station_groups=station_groups,
         username=current_user(),
         is_admin=is_admin(),
@@ -921,7 +935,7 @@ def compare():
         station_ids = request.args.get("stations", "").split(",")
     station_ids = list(dict.fromkeys(item for item in station_ids if item))
     if len(station_ids) < 2:
-        return redirect(url_for("compare_select", error="Отметьте минимум два объекта."))
+        return "Для сравнения отметьте минимум два объекта.", 400
     parameter = request.args.get("parameter", "discharge")
     series_type = request.args.get("series_type", "observed")
     mode = request.args.get("mode", "timeseries")
@@ -1001,61 +1015,6 @@ def compare():
     if request.args.get("download") == "1":
         return send_file(output, mimetype="image/png", as_attachment=True, download_name=filename)
     return send_file(output, mimetype="image/png")
-
-
-def render_compare_selector(error=None):
-    con = connect_db()
-    stations = con.execute(
-        """
-        SELECT s.station_id,s.display_name,s.river,
-               COUNT(o.station) AS observation_count
-        FROM stations s
-        LEFT JOIN observations o
-          ON o.station=s.station_id AND o.series_type='observed'
-        GROUP BY s.station_id,s.display_name,s.river
-        ORDER BY s.display_name
-        """
-    ).fetchall()
-    parameters = con.execute(
-        """
-        SELECT p.code,p.label,p.unit,COUNT(o.station) AS observation_count
-        FROM parameters p
-        LEFT JOIN observations o ON o.parameter=p.code
-        GROUP BY p.code,p.label,p.unit
-        HAVING COUNT(o.station)>0
-        ORDER BY p.label
-        """
-    ).fetchall()
-    default_stations = [
-        row["station"]
-        for row in con.execute(
-            """
-            SELECT station FROM observations
-            WHERE parameter='discharge' AND series_type='observed'
-            GROUP BY station ORDER BY station LIMIT 2
-            """
-        )
-    ]
-    date_bounds = con.execute(
-        "SELECT MIN(substr(date,1,10)) AS first_date, "
-        "MAX(substr(date,1,10)) AS last_date FROM observations"
-    ).fetchone()
-    con.close()
-    return render_template(
-        "compare_select.html",
-        stations=stations,
-        parameters=parameters,
-        default_stations=default_stations,
-        date_min=date_bounds["first_date"] or "",
-        date_max=date_bounds["last_date"] or "",
-        error=error,
-    )
-
-
-@app.route("/compare-select")
-@login_required
-def compare_select():
-    return render_compare_selector(request.args.get("error"))
 
 
 @app.route("/admin/backup", methods=["POST"])
