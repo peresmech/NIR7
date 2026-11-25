@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Сравнение объектов — HydroGIS</title>
+  <style>
+    body { margin:0; padding:24px; background:#eef3f8; color:#26384a;
+      font:15px Segoe UI,Arial,sans-serif; }
+    main { max-width:760px; margin:0 auto; padding:24px; border-radius:14px;
+      background:white; box-shadow:0 12px 35px #18324a1f; }
+    h1 { margin:0; color:#18324a; font-size:23px; }
+    p { color:#52677b; line-height:1.5; }
+    .settings { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+    label { color:#52677b; font-size:13px; }
+    select { display:block; width:100%; box-sizing:border-box; margin-top:6px;
+      padding:10px; border:1px solid #cbd8e5; border-radius:8px; background:white; }
+    fieldset { margin:18px 0; padding:12px; border:1px solid #d9e3ed; border-radius:9px; }
+    legend { padding:0 6px; color:#304c66; font-weight:650; }
+    .station-list { max-height:48vh; overflow:auto; }
+    .station { display:flex; align-items:center; gap:10px; padding:10px;
+      border-bottom:1px solid #edf1f5; color:#26384a; cursor:pointer; }
+    .station:last-child { border-bottom:0; }
+    .station input { width:17px; height:17px; accent-color:#1769aa; }
+    .station small { display:block; margin-top:3px; color:#63788d; }
+    .buttons { display:flex; flex-wrap:wrap; gap:14px; margin-top:18px; }
+    button,.back { display:inline-flex; align-items:center; justify-content:center;
+      min-height:42px; padding:9px 16px; border:1px solid #c5d3e2; border-radius:8px;
+      background:#edf4fa; color:#1769aa; font:inherit; text-decoration:none; cursor:pointer; }
+    button.primary { border-color:#1769aa; background:#1769aa; color:white; }
+    @media(max-width:560px) {
+      body { padding:10px; }
+      main { padding:16px; }
+      .settings { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Сравнение объектов</h1>
+    <p>Поставьте галочки слева от названий. Выберите минимум два объекта, затем
+      укажите показатель и нажмите одну из кнопок построения.</p>
+    <form action="/compare" method="get">
+      <div class="settings">
+        <label>Показатель
+          <select name="parameter">
+            {% for parameter in parameters %}
+            <option value="{{ parameter.code }}">{{ parameter.label }}{% if parameter.unit %}, {{ parameter.unit }}{% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Тип данных
+          <select name="series_type">
+            <option value="observed">Фактические наблюдения</option>
+            <option value="forecast">Прогноз</option>
+          </select>
+        </label>
+      </div>
+      <fieldset>
+        <legend>Объекты для сравнения</legend>
+        <div class="station-list">
+          {% for station in stations %}
+          <label class="station">
+            <input type="checkbox" name="station" value="{{ station.station_id }}"
+              {% if station.station_id in default_stations %}checked{% endif %}>
+            <span>{{ station.display_name }}
+              <small>{{ station.river or "Река не указана" }}
+                {% if station.observation_count %} · есть фактические данные{% endif %}
+              </small>
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <div class="buttons">
+        <button class="primary" type="submit" name="mode" value="timeseries">
+          Сравнить по датам
+        </button>
+        <button type="submit" name="mode" value="annual">Сравнить по годам</button>
+        <a class="back" href="/">Вернуться к карте</a>
+      </div>
+    </form>
+  </main>
+</body>
+</html>

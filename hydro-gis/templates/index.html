@@ -13,7 +13,7 @@
     .brand img { width:32px; height:32px; }
     .brand-title { font-weight:700; font-size:17px; }
     .tools-bar { display:flex; align-items:center; justify-content:center;
-      gap:40px; flex:1; min-width:0; }
+      column-gap:15px; flex:1; min-width:0; }
     .tools-bar a { text-decoration:none; }
     .tool-button { display:flex; align-items:center; gap:7px; border:1px solid #54718c;
       border-radius:8px; margin:0; padding:7px 10px; background:#27445f; color:white; cursor:pointer;
@@ -188,9 +188,10 @@
       <button class="tool-button" id="summaryButton" title="Сводные показатели">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V5M4 19H21M8 15v-3m5 3V8m5 7V5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Показатели</span>
       </button>
-      <button class="tool-button" id="compareOpenButton" title="Выбрать объекты для сравнения и экспорта">
+      <a class="tool-button" id="compareOpenButton" href="/compare-select"
+         title="Выбрать объекты для сравнения и экспорта">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 18V8m5 10V5m6 13v-7m5 7V3M2 18h20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Сравнить объекты</span>
-      </button>
+      </a>
       {% if is_admin %}
       <a class="tool-button" href="/admin/audit" title="Журнал действий">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Журнал</span>
@@ -686,7 +687,8 @@
       error.classList.remove("visible");
     }
     compareChecks.forEach(input => input.addEventListener("change", updateCompareCount));
-    document.getElementById("compareOpenButton").addEventListener("click", function() {
+    document.getElementById("compareOpenButton").addEventListener("click", function(event) {
+      event.preventDefault();
       const candidates = [
         ...(selected ? [selected] : []),
         ...defaultCompareStations
