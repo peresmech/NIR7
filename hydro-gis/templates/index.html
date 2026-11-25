@@ -13,7 +13,7 @@
     .brand img { width:32px; height:32px; }
     .brand-title { font-weight:700; font-size:17px; }
     .tools-bar { display:flex; align-items:center; justify-content:center;
-      column-gap:12px; row-gap:12px; flex:1; }
+      gap:15px; flex:1; }
     .tools-bar a { text-decoration:none; }
     .tool-button { display:flex; align-items:center; gap:7px; border:1px solid #54718c;
       border-radius:8px; margin:0; padding:7px 10px; background:#27445f; color:white; cursor:pointer;
@@ -130,6 +130,22 @@
     #compareError { display:none; margin:9px 0 0; color:#a83232; font-size:13px; }
     #compareError.visible { display:block; }
     .compare-actions .primary { border-color:#1769aa; color:white; background:#1769aa; }
+    .modal-backdrop { position:fixed; z-index:90; inset:0; display:none; align-items:center;
+      justify-content:center; padding:16px; background:#10283db3; }
+    .modal-backdrop.open { display:flex; }
+    .editor-panel { width:min(620px,100%); max-height:92vh; overflow:auto;
+      padding:20px; box-sizing:border-box; border-radius:14px; background:white;
+      box-shadow:0 18px 60px #10283d55; }
+    .editor-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .editor-heading h2 { margin:0; color:#18324a; font-size:20px; }
+    .editor-panel label { display:block; margin-top:10px; color:#52677b; font-size:13px; }
+    .editor-panel input,.editor-panel select { width:100%; box-sizing:border-box; margin-top:5px;
+      padding:9px; border:1px solid #ccd8e5; border-radius:7px; background:white; }
+    .editor-panel button { margin:10px 8px 0 0; padding:9px 12px; border:1px solid #cbd8e5;
+      border-radius:7px; background:#edf4fa; color:#1769aa; cursor:pointer; }
+    .editor-panel .editor-save { background:#1769aa; color:white; }
+    .editor-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 10px; }
+    .editor-note { color:#63788d; font-size:12px; line-height:1.45; }
     .map-error { position:absolute; z-index:500; left:50%; top:50%; transform:translate(-50%,-50%);
       max-width:360px; padding:14px 18px; border:1px solid #d4dfeb; border-radius:10px;
       background:#fffffff2; color:#18324a; box-shadow:0 5px 20px #18324a22;
@@ -178,14 +194,22 @@
       <label>Поиск объекта</label>
       <input id="search" placeholder="Название">
       <h3>Объекты</h3>
-      <small>Список сгруппирован по областям и регионам.</small>
+      <small>Список сгруппирован по областям и регионам.
+        {% if is_admin %}Правый клик по объекту открывает редактор.{% endif %}</small>
       <div id="stations">
         {% for group_name, group_stations in station_groups.items() %}
         <section class="station-group">
           <h4>{{ group_name }}</h4>
           {% for s in group_stations %}
-          <div class="station" data-id="{{ s.station_id }}" data-river="{{ s.river }}"
-               data-name="{{ s.display_name }}" data-type="{{ s.object_type }}">
+          <div class="station" data-id="{{ s.station_id }}" data-river="{{ s.river or '' }}"
+               data-name="{{ s.display_name }}" data-type="{{ s.object_type }}"
+               data-section="{{ s.river_section }}"
+               data-region="{{ s.region }}" data-lat="{{ s.lat if s.lat is not none else '' }}"
+               data-lon="{{ s.lon if s.lon is not none else '' }}"
+               data-source-istok="{{ s.source_istok }}" data-source-stok="{{ s.source_stok }}"
+               data-downstream="{{ s.downstream_station_id }}" data-tp="{{ s.tp }}"
+               data-source-name="{{ s.source_name }}" data-source-type="{{ s.source_type }}"
+               data-source-note="{{ s.source_note }}">
             {{ s.display_name }}
           </div>
           {% endfor %}
@@ -232,6 +256,50 @@
       </div>
     </section>
   </main>
+  {% if is_admin %}
+  <div id="stationEditor" class="modal-backdrop" role="dialog" aria-modal="true"
+       aria-labelledby="stationEditorTitle">
+    <form class="editor-panel" method="post" action="/admin/station">
+      <div class="editor-heading">
+        <h2 id="stationEditorTitle">Редактирование объекта</h2>
+        <button id="stationEditorClose" type="button">Закрыть</button>
+      </div>
+      <input type="hidden" name="return_to" value="/">
+      <label>Код объекта<input name="station_id" id="editStationId" required readonly></label>
+      <label>Название<input name="display_name" id="editDisplayName" required></label>
+      <div class="editor-grid">
+        <label>Река<input name="river" id="editRiver"></label>
+        <label>Участок реки<input name="river_section" id="editRiverSection"></label>
+        <label>Область / регион<input name="region" id="editRegion"></label>
+        <label>Широта<input name="lat" id="editLatitude" type="number" step="any" required></label>
+        <label>Долгота<input name="lon" id="editLongitude" type="number" step="any" required></label>
+      </div>
+      <button id="editPickLocation" type="button">Указать место кликом на карте</button>
+      <p id="pickedCoordinates" class="editor-note">Выбор места покажет широту и долготу в полях выше.</p>
+      <label>Тип объекта
+        <select name="object_type" id="editObjectType">
+          <option value="hub">Гидроузел</option><option value="post">Гидропост</option>
+        </select>
+      </label>
+      <label>Исток / ИСТОК<input name="source_istok" id="editSourceIstok"></label>
+      <label>Сток<input name="source_stok" id="editSourceStok"></label>
+      <label>Следующий объект
+        <select name="downstream_station_id" id="editDownstream">
+          <option value="">Не указан</option>
+          {% for item in all_stations %}
+          <option value="{{ item.station_id }}">{{ item.display_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <p class="editor-note">Если выбран следующий объект, его поле «Исток» будет автоматически заполнено значением «Сток», а если оно пустое — названием реки.</p>
+      <label>ТП<input name="tp" id="editTp"></label>
+      <label>Источник данных<input name="source_name" id="editSourceName"></label>
+      <label>Тип источника<input name="source_type" id="editSourceType"></label>
+      <label>Примечание<input name="source_note" id="editSourceNote"></label>
+      <button class="editor-save" type="submit">Сохранить изменения</button>
+    </form>
+  </div>
+  {% endif %}
   <div id="compareDialog" role="dialog" aria-modal="true" aria-labelledby="compareTitle">
     <div class="compare-panel">
       <div class="compare-heading">
@@ -454,6 +522,64 @@
       document.getElementById("mapFrame").src =
         "/map" + (selected ? "?station=" + encodeURIComponent(selected) : "");
     }
+    {% if is_admin %}
+    const stationEditor = document.getElementById("stationEditor");
+    const editorFields = {
+      station_id: document.getElementById("editStationId"),
+      display_name: document.getElementById("editDisplayName"),
+      river: document.getElementById("editRiver"),
+      river_section: document.getElementById("editRiverSection"),
+      region: document.getElementById("editRegion"),
+      lat: document.getElementById("editLatitude"),
+      lon: document.getElementById("editLongitude"),
+      object_type: document.getElementById("editObjectType"),
+      source_istok: document.getElementById("editSourceIstok"),
+      source_stok: document.getElementById("editSourceStok"),
+      downstream_station_id: document.getElementById("editDownstream"),
+      tp: document.getElementById("editTp"),
+      source_name: document.getElementById("editSourceName"),
+      source_type: document.getElementById("editSourceType"),
+      source_note: document.getElementById("editSourceNote")
+    };
+    let locationPickTarget = null;
+    function openStationEditor(station) {
+      editorFields.station_id.value = station.dataset.id;
+      editorFields.display_name.value = station.dataset.name;
+      editorFields.river.value = station.dataset.river;
+      editorFields.river_section.value = station.dataset.section;
+      editorFields.region.value = station.dataset.region;
+      editorFields.lat.value = station.dataset.lat;
+      editorFields.lon.value = station.dataset.lon;
+      editorFields.object_type.value = station.dataset.type || "hub";
+      editorFields.source_istok.value = station.dataset.sourceIstok || "";
+      editorFields.source_stok.value = station.dataset.sourceStok || "";
+      editorFields.downstream_station_id.value = station.dataset.downstream || "";
+      editorFields.tp.value = station.dataset.tp || "";
+      editorFields.source_name.value = station.dataset.sourceName || "";
+      editorFields.source_type.value = station.dataset.sourceType || "";
+      editorFields.source_note.value = station.dataset.sourceNote || "";
+      Array.from(editorFields.downstream_station_id.options).forEach(function(option) {
+        option.disabled = option.value === station.dataset.id;
+      });
+      document.getElementById("stationEditorTitle").textContent =
+        "Объект: " + station.dataset.name;
+      stationEditor.classList.add("open");
+    }
+    stations.forEach(function(station) {
+      station.addEventListener("contextmenu", function(event) {
+        event.preventDefault();
+        openStationEditor(station);
+      });
+    });
+    document.getElementById("stationEditorClose").addEventListener("click", function() {
+      stationEditor.classList.remove("open");
+    });
+    document.getElementById("editPickLocation").addEventListener("click", function() {
+      locationPickTarget = "station";
+      stationEditor.classList.remove("open");
+      document.getElementById("mapFrame").src = "/map?pick=1";
+    });
+    {% endif %}
     stations.forEach(function(el) {
       el.addEventListener("click", function() {
         stations.forEach(s => s.classList.remove("active"));
@@ -470,7 +596,32 @@
         el.dataset.name.toLowerCase().includes(text) ? "block" : "none");
     });
     window.addEventListener("message", function(event) {
-      if (!event.data || event.data.type !== "hydroStationSelected") return;
+      if (event.source !== document.getElementById("mapFrame").contentWindow ||
+          !event.data) return;
+      {% if is_admin %}
+      if (event.data.type === "hydroStationEdit") {
+        const station = Array.from(stations).find(
+          el => el.dataset.id === event.data.stationId
+        );
+        if (station) openStationEditor(station);
+        return;
+      }
+      if (event.data.type === "hydroLocationSelected" && locationPickTarget === "station") {
+        locationPickTarget = null;
+        const station = Array.from(stations).find(
+          el => el.dataset.id === editorFields.station_id.value
+        );
+        if (station) openStationEditor(station);
+        editorFields.lat.value = event.data.lat.toFixed(6);
+        editorFields.lon.value = event.data.lon.toFixed(6);
+        document.getElementById("pickedCoordinates").textContent =
+          "Широта: " + event.data.lat.toFixed(6) +
+          " · Долгота: " + event.data.lon.toFixed(6);
+        updateMap();
+        return;
+      }
+      {% endif %}
+      if (event.data.type !== "hydroStationSelected") return;
       const station = Array.from(stations).find(
         el => el.dataset.id === event.data.stationId
       );
@@ -528,34 +679,11 @@
       });
       return "/compare?" + params.toString();
     }
-    document.getElementById("compareButton").addEventListener("click", async function() {
+    document.getElementById("compareButton").addEventListener("click", function() {
       const url = comparisonUrl("timeseries");
-      if (!url) return;
-      const button = this;
-      button.disabled = true;
-      button.textContent = "Проверяем данные…";
-      try {
-        const checkUrl = url.replace("/compare?", "/compare/availability?");
-        const response = await fetch(checkUrl);
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "Не удалось проверить данные");
-        if (!result.ready) {
-          const error = document.getElementById("compareError");
-          error.textContent = result.missing.length
-            ? "Нет данных по выбранному показателю у: " + result.missing.join(", ")
-            : "Для сравнения нужно выбрать минимум два объекта с данными по этому показателю.";
-          error.classList.add("visible");
-          return;
-        }
+      if (url) {
         closeCompareDialog();
         openChart("Сравнение объектов", url, url + "&download=1");
-      } catch (error) {
-        const message = document.getElementById("compareError");
-        message.textContent = error.message || "Не удалось построить сравнение.";
-        message.classList.add("visible");
-      } finally {
-        button.disabled = false;
-        button.textContent = "Построить сравнение";
       }
     });
     document.getElementById("annualButton").addEventListener("click", function() {

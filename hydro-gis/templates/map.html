@@ -18,12 +18,17 @@
       background:#fffffff5; color:#30495a; box-shadow:0 3px 14px #18324a2b;
       font:14px Segoe UI,Arial,sans-serif; text-align:center; }
     #mapStatus.error { border-color:#d6a5a5; color:#8d2828; }
+    #pickStatus { position:absolute; z-index:600; left:50%; top:12px; transform:translateX(-50%);
+      max-width:90%; padding:8px 12px; border:1px solid #b9c9d3; border-radius:8px;
+      background:#fffffff5; color:#30495a; font:13px Segoe UI,Arial,sans-serif;
+      text-align:center; }
   </style>
   <script src="/static/vendor/leaflet.js" onerror="window.hydroLeafletFailed=true"></script>
 </head>
 <body>
   <div id="map" aria-label="Карта гидрологических объектов"></div>
   <div id="mapStatus" role="status">Загружаем OpenStreetMap и объекты…</div>
+  <div id="pickStatus" role="status" hidden>Нажмите на карте, чтобы выбрать место.</div>
   <div id="basemapStatus" class="basemap-notice" role="status" hidden>
     Подложка OpenStreetMap недоступна. Проверьте подключение к интернету.
   </div>
@@ -37,10 +42,13 @@
     }
     const stations = {{ stations|tojson }};
     const selectedStation = {{ selected_station|tojson }};
+    const pickMode = {{ pick_mode|tojson }};
+    const canEdit = {{ can_edit|tojson }};
     const map = L.map("map", {
       zoomControl:true,
       attributionControl:false
     }).setView({{ center|tojson }}, 5);
+    window.hydroInvalidateSize = () => map.invalidateSize();
     const basemap = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom:19,
       attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
@@ -56,6 +64,25 @@
     });
     basemap.addTo(map);
     const bounds = L.latLngBounds([]);
+    if (pickMode) {
+      document.getElementById("pickStatus").hidden = false;
+      document.getElementById("map").style.cursor = "crosshair";
+      map.on("click", event => {
+        const {lat, lng} = event.latlng;
+        const latitude = Number(lat.toFixed(6));
+        const longitude = Number(lng.toFixed(6));
+        document.getElementById("pickStatus").textContent =
+          "Широта: " + latitude.toFixed(6) + " · Долгота: " + longitude.toFixed(6) +
+          " — место выбрано";
+        if (window.hydroPickMarker) window.hydroPickMarker.remove();
+        window.hydroPickMarker = L.circleMarker([latitude, longitude], {
+          radius:8, color:"#e67e22", fillColor:"#e67e22", fillOpacity:1, weight:2
+        }).addTo(map);
+        window.parent.postMessage({
+          type:"hydroLocationSelected", lat:latitude, lon:longitude
+        },"*");
+      });
+    }
     addStations();
     mapStatus.hidden = true;
 
@@ -90,11 +117,20 @@
       }
       marker.bindPopup(popup);
       marker.on("click",function() {
+        if (pickMode) return;
         window.parent.postMessage({
           type:"hydroStationSelected",
           stationId:station.station_id
         },"*");
       });
+      if (canEdit) {
+        marker.on("contextmenu", function() {
+          window.parent.postMessage({
+            type:"hydroStationEdit",
+            stationId:station.station_id
+          },"*");
+        });
+      }
       bounds.extend([station.lat,station.lon]);
     });
     const focusedStation = stations.find(station => station.station_id === selectedStation);

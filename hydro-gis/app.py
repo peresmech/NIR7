@@ -215,6 +215,8 @@ def init_database():
         ("object_type", "TEXT"),
         ("river_section", "TEXT"),
         ("region", "TEXT"),
+        ("source_stok", "TEXT"),
+        ("downstream_station_id", "TEXT"),
         ("sort_order", "INTEGER"),
         ("source_name", "TEXT"),
         ("source_type", "TEXT"),
@@ -256,6 +258,8 @@ def init_database():
             ("object_type", "TEXT"),
             ("river_section", "TEXT"),
             ("region", "TEXT"),
+            ("source_stok", "TEXT"),
+            ("downstream_station_id", "TEXT"),
             ("sort_order", "INTEGER"),
             ("source_name", "TEXT"),
             ("source_type", "TEXT"),
@@ -437,8 +441,14 @@ def index():
         """
         SELECT station_id, display_name, river, lat, lon,
                COALESCE(object_type,'hub') AS object_type,
+               COALESCE(river_section,'') AS river_section,
                COALESCE(region,'') AS region,
                COALESCE(source_istok,'') AS source_istok,
+               COALESCE(source_stok,'') AS source_stok,
+               COALESCE(downstream_station_id,'') AS downstream_station_id,
+               COALESCE(source_name,'') AS source_name,
+               COALESCE(source_type,'') AS source_type,
+               COALESCE(source_note,'') AS source_note,
                COALESCE(tp,'') AS tp,
                COALESCE(sort_order,0) AS sort_order
         FROM stations
@@ -463,6 +473,7 @@ def index():
     return render_template(
         "index.html",
         stations=stations,
+        all_stations=stations,
         station_groups=station_groups,
         username=current_user(),
         is_admin=is_admin(),
@@ -476,6 +487,7 @@ def index():
 @login_required
 def map_page():
     station_id = request.args.get("station")
+    pick_mode = request.args.get("pick") == "1"
     con = connect_db()
     rows = con.execute(
         """
@@ -514,6 +526,8 @@ def map_page():
         stations=visible_rows,
         selected_station=station_id,
         center=center,
+        pick_mode=pick_mode,
+        can_edit=is_admin(),
     )
 
 
@@ -640,58 +654,6 @@ def observation_filters(stations, parameter, date_from, date_to, series_type="ob
         con.close()
         raise ValueError("Неизвестный тип ряда")
     return con
-
-
-@app.route("/compare/availability")
-@login_required
-def compare_availability():
-    station_ids = list(
-        dict.fromkeys(
-            item
-            for item in request.args.get("stations", "").split(",")
-            if item
-        )
-    )
-    parameter = request.args.get("parameter", "discharge")
-    series_type = request.args.get("series_type", "observed")
-    date_from = request.args.get("from", "")
-    date_to = request.args.get("to", "")
-    try:
-        con = observation_filters(
-            station_ids, parameter, date_from, date_to, series_type
-        )
-    except ValueError as exc:
-        return {"error": str(exc)}, 400
-
-    counts_query = (
-        "SELECT station,COUNT(*) AS row_count FROM observations "
-        f"WHERE station IN ({','.join('?' for _ in station_ids)}) "
-        "AND parameter=? AND series_type=?"
-    )
-    args = [*station_ids, parameter, series_type]
-    if date_from:
-        counts_query += " AND date>=?"
-        args.append(date_from)
-    if date_to:
-        counts_query += " AND date<=?"
-        args.append(date_to + " 23:59:59")
-    counts_query += " GROUP BY station"
-    counts = {
-        row["station"]: row["row_count"]
-        for row in con.execute(counts_query, args)
-    }
-    names = {
-        row["station_id"]: row["display_name"]
-        for row in con.execute(
-            f"SELECT station_id,display_name FROM stations "
-            f"WHERE station_id IN ({','.join('?' for _ in station_ids)})",
-            station_ids,
-        )
-    }
-    con.close()
-    available = [names[key] for key in station_ids if counts.get(key, 0)]
-    missing = [names[key] for key in station_ids if not counts.get(key, 0)]
-    return {"ready": len(available) >= 2, "available": available, "missing": missing}
 
 
 @app.route("/summary")
@@ -860,16 +822,24 @@ def compare():
     meta = con.execute(
         "SELECT label,unit FROM parameters WHERE code=?", (parameter,)
     ).fetchone()
+    station_names = {
+        row["station_id"]: row["display_name"]
+        for row in con.execute(
+            f"SELECT station_id,display_name FROM stations "
+            f"WHERE station_id IN ({','.join('?' for _ in station_ids)})",
+            station_ids,
+        )
+    }
     con.close()
     if not frame.empty:
         frame["date"] = pd.to_datetime(frame["date"])
     fig, ax = plt.subplots(figsize=(8.8, 4), dpi=100)
     if frame.empty or frame["station"].nunique() < 2:
-        message = (
-            "Нет данных для выбранного периода"
-            if frame.empty
-            else "Есть данные только по одному объекту"
-        )
+        present = set(frame["station"]) if not frame.empty else set()
+        missing = [station_names[item] for item in station_ids if item not in present]
+        message = "Нет данных для выбранного периода"
+        if missing:
+            message = "Нет данных у: " + ", ".join(missing)
         ax.text(0.5, 0.5, message, ha="center", va="center")
     elif mode == "annual":
         frame["year"] = frame["date"].dt.year
@@ -1003,32 +973,72 @@ def admin():
         elif len(files) > 100:
             error = "За один раз можно загрузить не более 100 файлов"
         else:
-            con = connect_db()
-            cursor = con.execute(
-                "INSERT INTO import_batches(imported_at,username) VALUES(?,?)",
-                (datetime.now().isoformat(timespec="seconds"), current_user()),
-            )
-            batch_id = cursor.lastrowid
-            con.commit()
-            con.close()
+            shared_name = request.form.get("shared_station_name", "").strip()
+            shared_region = request.form.get("shared_region", "").strip() or None
+            shared_object_type = request.form.get("shared_object_type", "").strip()
+            latitude_text = request.form.get("shared_lat", "").strip()
+            longitude_text = request.form.get("shared_lon", "").strip()
+            if bool(latitude_text) != bool(longitude_text):
+                error = "Для координат укажите и широту, и долготу."
+            elif shared_object_type not in ("", "hub", "post"):
+                error = "Неизвестный тип объекта."
 
-            imported = 0
-            failed = 0
-            for file in files:
-                filename = Path(file.filename.replace("\\", "/")).name
-                path = UPLOAD_DIR / f"{secrets.token_hex(12)}.csv"
+            coordinates = None
+            if not error and latitude_text and longitude_text:
                 try:
-                    file.save(path)
-                    import_observations(path, filename, batch_id)
-                    imported += 1
-                except (OSError, UnicodeError, csv.Error, ValueError, sqlite3.Error) as exc:
-                    record_import_failure(batch_id, filename, str(exc))
-                    app.logger.warning("CSV import failed for %s: %s", filename, exc)
-                    failed += 1
-            message = f"Обработано файлов: {len(files)}. Загружено: {imported}. С ошибками: {failed}."
+                    coordinates = (float(latitude_text), float(longitude_text))
+                    if not (
+                        -90 <= coordinates[0] <= 90
+                        and -180 <= coordinates[1] <= 180
+                    ):
+                        raise ValueError
+                except ValueError:
+                    error = "Укажите корректные координаты: широта от -90 до 90, долгота от -180 до 180."
+
+            if not error:
+                first_name = Path(files[0].filename.replace("\\", "/")).name
+                first_station_name, first_object_type = station_from_filename(first_name)
+                if coordinates and not shared_name:
+                    shared_name = first_station_name
+                if shared_name and not shared_object_type:
+                    shared_object_type = first_object_type
+                con = connect_db()
+                cursor = con.execute(
+                    "INSERT INTO import_batches(imported_at,username) VALUES(?,?)",
+                    (datetime.now().isoformat(timespec="seconds"), current_user()),
+                )
+                batch_id = cursor.lastrowid
+                con.commit()
+                con.close()
+
+                imported = 0
+                failed = 0
+                for file in files:
+                    filename = Path(file.filename.replace("\\", "/")).name
+                    path = UPLOAD_DIR / f"{secrets.token_hex(12)}.csv"
+                    try:
+                        file.save(path)
+                        import_observations(
+                            path,
+                            filename,
+                            batch_id,
+                            station_name_override=shared_name or None,
+                            object_type_override=shared_object_type or None,
+                            coordinates_override=coordinates,
+                            region_override=shared_region,
+                        )
+                        imported += 1
+                    except (OSError, UnicodeError, csv.Error, ValueError, sqlite3.Error) as exc:
+                        record_import_failure(batch_id, filename, str(exc))
+                        app.logger.warning("CSV import failed for %s: %s", filename, exc)
+                        failed += 1
+                message = f"Обработано файлов: {len(files)}. Загружено: {imported}. С ошибками: {failed}."
 
     con = connect_db()
     stations = con.execute(
+        "SELECT station_id,display_name FROM stations ORDER BY display_name"
+    ).fetchall()
+    all_stations = con.execute(
         "SELECT station_id,display_name FROM stations ORDER BY display_name"
     ).fetchall()
     imports = con.execute(
@@ -1051,6 +1061,7 @@ def admin():
     return render_template(
         "admin.html",
         stations=stations,
+        all_stations=all_stations,
         imports=imports,
         backups=[path.name for path in backups[:20]],
         message=message,
@@ -1077,6 +1088,8 @@ def create_station():
     source_type = request.form.get("source_type", "").strip()
     source_note = request.form.get("source_note", "").strip()
     source_istok = request.form.get("source_istok", "").strip()
+    source_stok = request.form.get("source_stok", "").strip()
+    downstream_station_id = request.form.get("downstream_station_id", "").strip()
     tp = request.form.get("tp", "").strip()
 
     try:
@@ -1089,6 +1102,10 @@ def create_station():
 
     if not station_id or not display_name:
         return "Укажите идентификатор и название объекта", 400
+    if downstream_station_id == station_id:
+        return "Объект не может быть собственным следующим объектом.", 400
+    if object_type not in ("hub", "post"):
+        return "Выберите корректный тип объекта.", 400
 
     con = connect_db()
     station_columns = {
@@ -1099,6 +1116,8 @@ def create_station():
         ("object_type", "TEXT"),
         ("river_section", "TEXT"),
         ("region", "TEXT"),
+        ("source_stok", "TEXT"),
+        ("downstream_station_id", "TEXT"),
         ("sort_order", "INTEGER"),
         ("source_name", "TEXT"),
         ("source_type", "TEXT"),
@@ -1109,39 +1128,81 @@ def create_station():
         if column not in station_columns:
             con.execute(f"ALTER TABLE stations ADD COLUMN {column} {definition}")
 
-    con.execute(
-        """
-        INSERT INTO stations(
-            station_id,display_name,river,lat,lon,db_station,
-            object_type,river_section,region,sort_order,
-            source_name,source_type,source_note,source_istok,tp
+    if downstream_station_id and not con.execute(
+        "SELECT 1 FROM stations WHERE station_id=?", (downstream_station_id,)
+    ).fetchone():
+        con.close()
+        return "Следующий объект не найден.", 400
+    next_id = downstream_station_id
+    visited = set()
+    while next_id and next_id not in visited:
+        if next_id == station_id:
+            con.close()
+            return "Связь создаст замкнутую цепочку объектов.", 400
+        visited.add(next_id)
+        next_station = con.execute(
+            "SELECT downstream_station_id FROM stations WHERE station_id=?",
+            (next_id,),
+        ).fetchone()
+        next_id = next_station["downstream_station_id"] if next_station else None
+    previous = con.execute(
+        "SELECT downstream_station_id,river,source_stok FROM stations WHERE station_id=?",
+        (station_id,),
+    ).fetchone()
+    previous_downstream = previous["downstream_station_id"] if previous else None
+    with con:
+        con.execute(
+            """
+            INSERT INTO stations(
+                station_id,display_name,river,lat,lon,db_station,
+                object_type,river_section,region,sort_order,
+                source_name,source_type,source_note,source_istok,source_stok,
+                downstream_station_id,tp
+            )
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(station_id) DO UPDATE SET
+                display_name=excluded.display_name,
+                river=excluded.river,
+                lat=excluded.lat,
+                lon=excluded.lon,
+                db_station=excluded.db_station,
+                object_type=excluded.object_type,
+                river_section=excluded.river_section,
+                region=excluded.region,
+                source_name=excluded.source_name,
+                source_type=excluded.source_type,
+                source_note=excluded.source_note,
+                source_istok=excluded.source_istok,
+                source_stok=excluded.source_stok,
+                downstream_station_id=excluded.downstream_station_id,
+                tp=excluded.tp
+            """,
+            (
+                station_id, display_name, river, lat_value, lon_value, station_id,
+                object_type, river_section, region, 0,
+                source_name, source_type, source_note, source_istok, source_stok,
+                downstream_station_id or None, tp,
+            ),
         )
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ON CONFLICT(station_id) DO UPDATE SET
-            display_name=excluded.display_name,
-            river=excluded.river,
-            lat=excluded.lat,
-            lon=excluded.lon,
-            db_station=excluded.db_station,
-            object_type=excluded.object_type,
-            river_section=excluded.river_section,
-            region=excluded.region,
-            source_name=excluded.source_name,
-            source_type=excluded.source_type,
-            source_note=excluded.source_note,
-            source_istok=excluded.source_istok,
-            tp=excluded.tp
-        """,
-        (
-            station_id, display_name, river, lat_value, lon_value, station_id,
-            object_type, river_section, region, 0,
-            source_name, source_type, source_note, source_istok, tp,
-        ),
-    )
+        if previous_downstream and previous_downstream != downstream_station_id:
+            previous_source = previous["source_stok"] or previous["river"] or ""
+            con.execute(
+                """
+                UPDATE stations SET source_istok=NULL
+                WHERE station_id=? AND source_istok=?
+                """,
+                (previous_downstream, previous_source),
+            )
+        if downstream_station_id:
+            next_source = source_stok or river
+            con.execute(
+                "UPDATE stations SET source_istok=? WHERE station_id=?",
+                (next_source or None, downstream_station_id),
+            )
     con.commit()
     con.close()
     audit("Справочник объектов", f"Создан/изменён объект {station_id}: {display_name}")
-    return redirect(url_for("admin"))
+    return redirect("/" if request.form.get("return_to") == "/" else url_for("admin"))
 
 
 @app.route("/admin/password", methods=["POST"])
@@ -1223,8 +1284,19 @@ def station_from_filename(filename):
     return name, "hub" if is_hub else "post"
 
 
-def find_or_create_station(con, filename, coordinates=None, region=None):
+def find_or_create_station(
+    con,
+    filename,
+    coordinates=None,
+    region=None,
+    name_override=None,
+    object_type_override=None,
+):
     name, object_type = station_from_filename(filename)
+    if name_override:
+        name = name_override
+    if object_type_override:
+        object_type = object_type_override
     key = station_key(name)
     stations = [
         station
@@ -1246,8 +1318,8 @@ def find_or_create_station(con, filename, coordinates=None, region=None):
         con.execute(
             """
             UPDATE stations
-            SET lat=COALESCE(lat,?), lon=COALESCE(lon,?),
-                region=COALESCE(NULLIF(region,''),?)
+            SET lat=COALESCE(?,lat), lon=COALESCE(?,lon),
+                region=COALESCE(?,NULLIF(region,''))
             WHERE station_id=?
             """,
             (latitude, longitude, region, match["station_id"]),
@@ -1426,10 +1498,20 @@ def record_import_failure(batch_id, filename, message):
     con.close()
 
 
-def import_observations(path, filename, batch_id):
+def import_observations(
+    path,
+    filename,
+    batch_id,
+    station_name_override=None,
+    object_type_override=None,
+    coordinates_override=None,
+    region_override=None,
+):
     fieldnames, rows = read_hydrology_csv(path)
     date_column, series = detect_series(fieldnames, filename)
     station_name, object_type = station_from_filename(filename)
+    station_name = station_name_override or station_name
+    object_type = object_type_override or object_type
     columns = {normalize_words(name): name for name in fieldnames}
     latitude_column, longitude_column, region_column = metadata_columns(fieldnames)
     quality_column = next(
@@ -1483,9 +1565,16 @@ def import_observations(path, filename, batch_id):
     con = connect_db()
     try:
         with con:
-            coordinates = next(iter(coordinates_found), None)
-            region = next(iter(regions_found), None)
-            station_id = find_or_create_station(con, filename, coordinates, region)
+            coordinates = coordinates_override or next(iter(coordinates_found), None)
+            region = region_override or next(iter(regions_found), None)
+            station_id = find_or_create_station(
+                con,
+                filename,
+                coordinates,
+                region,
+                station_name_override,
+                object_type_override,
+            )
             station_location = con.execute(
                 "SELECT lat,lon FROM stations WHERE station_id=?", (station_id,)
             ).fetchone()

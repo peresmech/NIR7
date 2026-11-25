@@ -14,6 +14,12 @@
     .upload-form { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
     .upload-form input[type=file] { flex:1 1 320px; min-width:0; }
     .upload-form button { margin:0; }
+    .shared-point { display:grid; grid-template-columns:repeat(2,minmax(180px,1fr)); gap:8px;
+      width:100%; padding:12px; border:1px solid #d9e3ed; border-radius:8px; }
+    .shared-point input,.shared-point select { box-sizing:border-box; width:100%; margin:0; }
+    .shared-point p { grid-column:1/-1; margin:0; color:#63788d; font-size:13px; }
+    .map-picker { display:none; width:100%; height:320px; border:1px solid #ccd8e5; }
+    .map-picker.open { display:block; }
     .ok { color:#18794e; } .error { color:#b42318; }
     table { width:100%; border-collapse:collapse; }
     th,td { text-align:left; padding:8px; border-bottom:1px solid #e3eaf1; }
@@ -29,15 +35,53 @@
     <form class="upload-form" method="post" enctype="multipart/form-data">
       <label for="csvFiles">Выберите один или несколько CSV-файлов</label>
       <input id="csvFiles" type="file" name="csv_files" accept=".csv,text/csv" multiple required>
+      <div class="shared-point">
+        <p>Если выбранные файлы относятся к одной точке, задайте координаты:
+          все они привяжутся к объекту. Можно ввести общее название; если его
+          оставить пустым, название возьмётся из имени первого файла.</p>
+        <input name="shared_station_name" placeholder="Общее название объекта (необязательно)">
+        <select name="shared_object_type" aria-label="Тип общего объекта">
+          <option value="">Тип определить по первому файлу</option>
+          <option value="hub">Гидроузел</option>
+          <option value="post">Гидропост</option>
+        </select>
+        <input id="sharedLat" name="shared_lat" type="number" step="any" placeholder="Широта">
+        <input id="sharedLon" name="shared_lon" type="number" step="any" placeholder="Долгота">
+        <input name="shared_region" placeholder="Область или регион">
+        <button id="sharedMapButton" type="button">Выбрать точку на карте</button>
+      </div>
+      <iframe id="sharedMapPicker" class="map-picker" title="Выбор координат общей точки"
+              src="/map?pick=1"></iframe>
       <button type="submit">Загрузить файлы</button>
     </form>
     <p>Объект, показатель, даты и факт/прогноз определяются по имени файла
       и заголовкам. Если в CSV есть столбцы <code>lat/lon</code> или
       <code>широта/долгота</code>, координаты добавляются автоматически.
-      Без координат новой точки на карте не будет — их нужно указать в справочнике.
+      Для пакета файлов координаты можно указать выше или выбрать точку на карте.
+      Без координат новый объект не появится на карте.
       Единицы берутся из справочника параметров; в исходных CSV отдельного поля
       с единицами нет. Загруженные файлы обрабатываются отдельно:
       ошибка в одном не отменяет остальные.</p>
+    <script>
+      const sharedPicker = document.getElementById("sharedMapPicker");
+      document.getElementById("sharedMapButton").addEventListener("click", function() {
+        sharedPicker.classList.toggle("open");
+        if (sharedPicker.classList.contains("open")) {
+          setTimeout(function() {
+            if (sharedPicker.contentWindow.hydroInvalidateSize) {
+              sharedPicker.contentWindow.hydroInvalidateSize();
+            }
+          }, 100);
+        }
+      });
+      window.addEventListener("message", function(event) {
+        if (event.source !== sharedPicker.contentWindow ||
+            !event.data || event.data.type !== "hydroLocationSelected") return;
+        document.getElementById("sharedLat").value = event.data.lat.toFixed(6);
+        document.getElementById("sharedLon").value = event.data.lon.toFixed(6);
+        sharedPicker.classList.remove("open");
+      });
+    </script>
     <h3>Последние загруженные файлы</h3>
     <table>
       <tr><th>Дата</th><th>Объект</th><th>Код</th><th>Ряды</th><th>Файл</th><th>Результат</th></tr>
@@ -56,6 +100,7 @@
     <h3>Добавить объект вручную</h3>
     <p>Если в CSV не было координат, импорт создаёт объект без координат. Их можно добавить здесь.</p>
     <form method="post" action="/admin/station">
+      <input type="hidden" name="return_to" value="/admin">
       <input name="station_id" placeholder="Код объекта" required>
       <input name="display_name" placeholder="Название" required>
       <input name="river" placeholder="Река">
@@ -68,6 +113,11 @@
       </select>
       <input name="river_section" placeholder="Участок реки">
       <input name="source_istok" placeholder="ИСТОК / исток">
+      <input name="source_stok" placeholder="Сток">
+      <select name="downstream_station_id">
+        <option value="">Следующий объект не указан</option>
+        {% for s in all_stations %}<option value="{{ s.station_id }}">{{ s.display_name }}</option>{% endfor %}
+      </select>
       <input name="tp" placeholder="ТП">
       <input name="source_name" placeholder="Организация или документ-источник">
       <input name="source_type" placeholder="Тип источника">
