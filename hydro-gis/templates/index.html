@@ -13,7 +13,7 @@
     .brand img { width:32px; height:32px; }
     .brand-title { font-weight:700; font-size:17px; }
     .tools-bar { display:flex; align-items:center; justify-content:center;
-      gap:15px; flex:1; }
+      gap:28px; flex:1; }
     .tools-bar a { text-decoration:none; }
     .tool-button { display:flex; align-items:center; gap:7px; border:1px solid #54718c;
       border-radius:8px; margin:0; padding:7px 10px; background:#27445f; color:white; cursor:pointer;
@@ -306,7 +306,8 @@
         <h2 id="compareTitle">Сравнение объектов</h2>
         <button id="compareClose" type="button" aria-label="Закрыть">Закрыть</button>
       </div>
-      <p>Отметьте минимум два объекта. Активный на карте объект отмечается автоматически.</p>
+      <p>Для быстрого старта выбраны два объекта с данными по расходу. Измените выбор,
+        если нужно сравнить другие станции.</p>
       <label for="compareParameter">Показатель</label>
       <select id="compareParameter">
         <option value="discharge">Расход воды, м³/с</option>
@@ -347,6 +348,7 @@
     let chartUpdateTimer = null;
     const stations = document.querySelectorAll(".station");
     const compareChecks = document.querySelectorAll(".compare-check");
+    const defaultCompareStations = {{ comparison_defaults|tojson }};
     const dateMin = new Date("{{ date_min }}T00:00:00Z");
     const dayMilliseconds = 24 * 60 * 60 * 1000;
     const thumbParameters = [
@@ -640,9 +642,14 @@
     }
     compareChecks.forEach(input => input.addEventListener("change", updateCompareCount));
     document.getElementById("compareOpenButton").addEventListener("click", function() {
-      if (!selectedForAnalysis().length && selected) {
-        const activeChoice = Array.from(compareChecks).find(input => input.value === selected);
-        if (activeChoice) activeChoice.checked = true;
+      const candidates = [
+        ...(selected ? [selected] : []),
+        ...defaultCompareStations
+      ];
+      for (const id of candidates) {
+        if (selectedForAnalysis().length >= 2) break;
+        const choice = Array.from(compareChecks).find(input => input.value === id);
+        if (choice) choice.checked = true;
       }
       updateCompareCount();
       document.getElementById("compareDialog").classList.add("open");

@@ -455,6 +455,17 @@ def index():
         ORDER BY region, display_name
         """
     ).fetchall()
+    comparison_defaults = [
+        row["station"]
+        for row in con.execute(
+            """
+            SELECT DISTINCT station
+            FROM observations
+            WHERE parameter='discharge' AND series_type='observed'
+            ORDER BY station
+            """
+        )
+    ]
     date_bounds = con.execute(
         "SELECT MIN(substr(date,1,10)) AS first_date, "
         "MAX(substr(date,1,10)) AS last_date FROM observations"
@@ -474,6 +485,7 @@ def index():
         "index.html",
         stations=stations,
         all_stations=stations,
+        comparison_defaults=comparison_defaults,
         station_groups=station_groups,
         username=current_user(),
         is_admin=is_admin(),
