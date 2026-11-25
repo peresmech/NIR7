@@ -12,10 +12,11 @@
     .brand { display:flex; align-items:center; gap:9px; white-space:nowrap; }
     .brand img { width:32px; height:32px; }
     .brand-title { font-weight:700; font-size:17px; }
-    .tools-bar { display:flex; align-items:center; justify-content:center; gap:12px; flex:1; }
+    .tools-bar { display:flex; align-items:center; justify-content:center;
+      column-gap:12px; row-gap:12px; flex:1; }
     .tools-bar a { text-decoration:none; }
     .tool-button { display:flex; align-items:center; gap:7px; border:1px solid #54718c;
-      border-radius:8px; padding:7px 10px; background:#27445f; color:white; cursor:pointer;
+      border-radius:8px; margin:0; padding:7px 10px; background:#27445f; color:white; cursor:pointer;
       white-space:nowrap; font-size:13px; }
     .tool-button:hover { background:#355a7b; }
     .tool-button svg { width:17px; height:17px; }
@@ -174,16 +175,10 @@
   </header>
   <main>
     <aside>
-      <label>Обзор карты</label>
-      <select id="overview">
-        <option value="all">Вся система</option>
-        <option value="volga">Волга</option>
-        <option value="kama">Кама</option>
-      </select>
       <label>Поиск объекта</label>
       <input id="search" placeholder="Название">
       <h3>Объекты</h3>
-      <small>Выберите объект для просмотра. Для сравнения нажмите «Сравнить объекты».</small>
+      <small>Список сгруппирован по областям и регионам.</small>
       <div id="stations">
         {% for group_name, group_stations in station_groups.items() %}
         <section class="station-group">
@@ -456,10 +451,8 @@
       if (event.key === "Escape") document.getElementById("chartClose").click();
     });
     function updateMap() {
-      const overview = document.getElementById("overview").value;
       document.getElementById("mapFrame").src =
-        "/map?overview=" + encodeURIComponent(overview) +
-        (selected ? "&station=" + encodeURIComponent(selected) : "");
+        "/map" + (selected ? "?station=" + encodeURIComponent(selected) : "");
     }
     stations.forEach(function(el) {
       el.addEventListener("click", function() {
@@ -471,7 +464,6 @@
         document.getElementById("graphDrawer").classList.remove("open");
       });
     });
-    document.getElementById("overview").addEventListener("change", updateMap);
     document.getElementById("search").addEventListener("input", function() {
       const text = this.value.toLowerCase();
       stations.forEach(el => el.style.display =
@@ -536,11 +528,34 @@
       });
       return "/compare?" + params.toString();
     }
-    document.getElementById("compareButton").addEventListener("click", function() {
+    document.getElementById("compareButton").addEventListener("click", async function() {
       const url = comparisonUrl("timeseries");
-      if (url) {
+      if (!url) return;
+      const button = this;
+      button.disabled = true;
+      button.textContent = "Проверяем данные…";
+      try {
+        const checkUrl = url.replace("/compare?", "/compare/availability?");
+        const response = await fetch(checkUrl);
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Не удалось проверить данные");
+        if (!result.ready) {
+          const error = document.getElementById("compareError");
+          error.textContent = result.missing.length
+            ? "Нет данных по выбранному показателю у: " + result.missing.join(", ")
+            : "Для сравнения нужно выбрать минимум два объекта с данными по этому показателю.";
+          error.classList.add("visible");
+          return;
+        }
         closeCompareDialog();
         openChart("Сравнение объектов", url, url + "&download=1");
+      } catch (error) {
+        const message = document.getElementById("compareError");
+        message.textContent = error.message || "Не удалось построить сравнение.";
+        message.classList.add("visible");
+      } finally {
+        button.disabled = false;
+        button.textContent = "Построить сравнение";
       }
     });
     document.getElementById("annualButton").addEventListener("click", function() {

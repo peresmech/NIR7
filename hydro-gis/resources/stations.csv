@@ -1,13 +1,13 @@
-name,lat,lon,river,db_station,object_type,river_section,sort_order
-Угличский гидроузел,57.526,38.298,Волга,uglich_hub,hub,upper_volga,1
-Рыбинский гидроузел,58.082,38.825,Волга,rybinsk_hub,hub,upper_volga,2
-Горьковский гидроузел,56.654,43.374,Волга,gorky_hub,hub,middle_volga,3
-Чебоксарский гидроузел,56.140,47.465,Волга,cheboksary_hub,hub,middle_volga,4
-Куйбышевский гидроузел,53.452,49.491,Волга,kuibyshev_hub,hub,middle_volga,5
-Саратовский гидроузел,52.049,47.760,Волга,saratov_hub,hub,saratov_volgograd,1
-Вольск,52.038161,47.395524,Волга,volsk_post,post,saratov_volgograd,2
-Маркс,51.729007,46.735766,Волга,marks_post,post,saratov_volgograd,3
-Волгоградский гидроузел,48.826,44.671,Волга,volgograd_hub,hub,saratov_volgograd,4
-Камский гидроузел,58.114394,56.327609,Кама,kamsky_hub,hub,kama,1
-Воткинский гидроузел,56.790383,54.091170,Кама,votkinsky_hub,hub,kama,2
-Нижнекамский гидроузел,55.700513,52.278564,Кама,nizhnekamsky_hub,hub,kama,3
+name,lat,lon,river,db_station,object_type,river_section,region,sort_order
+Угличский гидроузел,57.526,38.298,Волга,uglich_hub,hub,upper_volga,Ярославская область,1
+Рыбинский гидроузел,58.082,38.825,Волга,rybinsk_hub,hub,upper_volga,Ярославская область,2
+Горьковский гидроузел,56.654,43.374,Волга,gorky_hub,hub,middle_volga,Нижегородская область,3
+Чебоксарский гидроузел,56.140,47.465,Волга,cheboksary_hub,hub,middle_volga,Чувашская Республика,4
+Куйбышевский гидроузел,53.452,49.491,Волга,kuibyshev_hub,hub,middle_volga,Самарская область,5
+Саратовский гидроузел,52.049,47.760,Волга,saratov_hub,hub,saratov_volgograd,Саратовская область,1
+Вольск,52.038161,47.395524,Волга,volsk_post,post,saratov_volgograd,Саратовская область,2
+Маркс,51.729007,46.735766,Волга,marks_post,post,saratov_volgograd,Саратовская область,3
+Волгоградский гидроузел,48.826,44.671,Волга,volgograd_hub,hub,saratov_volgograd,Волгоградская область,4
+Камский гидроузел,58.114394,56.327609,Кама,kamsky_hub,hub,kama,Пермский край,1
+Воткинский гидроузел,56.790383,54.091170,Кама,votkinsky_hub,hub,kama,Удмуртская Республика,2
+Нижнекамский гидроузел,55.700513,52.278564,Кама,nizhnekamsky_hub,hub,kama,Республика Татарстан,3
